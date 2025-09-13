@@ -1,0 +1,52 @@
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Secrets/config (present or future)
+.env
+.env.*
+
+# Packaging / build
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+*.egg
+
+# Tests / coverage / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.cache/
+
+# Logs / temp
+logs/
+*.log
+tmp/
+.local/
+
+# JS (if added later)
+node_modules/
+npm-debug.log*
+yarn-error.log
+
