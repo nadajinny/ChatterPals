@@ -1,0 +1,3 @@
+# Ignore all generated records but keep directory
+*
+!.gitignore
