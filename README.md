@@ -2,18 +2,16 @@ ChatterPals-jh — 화면 텍스트 맥락 Q&A (MVP)
 
 개요
 - 목표: 화면에 보이는 텍스트(예: 웹 기사)를 입력으로 받아 맥락을 파악하고 핵심 토픽을 식별하여 사용자가 생각을 확장할 수 있도록 “영어 질문”을 생성합니다.
-- 범위(MVP): 외부 의존성 없이 로컬에서 동작하는 HTTP 서비스. 텍스트를 받아 요약, 토픽, 질문을 반환합니다. 이후 OCR/웹 추출, LLM 연동으로 확장 가능하도록 설계했습니다.
+- 범위(MVP): 외부 의존성 없이 로컬에서 동작하는 HTTP 서비스. 텍스트를 받아 요약, 토픽, 질문을 반환하고, 생성된 Q&A/토론 내역을 날짜별 기록으로 저장·PDF로 내보낼 수 있습니다.
 
 빠른 시작
-- 요구 사항: Python 3.9+
-- 서버 실행(권장): 프로젝트 루트에서 `python3 -m app.server`
-- 또는(실행 권한 부여 후):
-  - `chmod +x app/server.py`
-  - 루트에서: `./app/server.py`
-  - `app` 폴더에서: `./server.py`
+- 요구 사항: Python 3.9+, FastAPI 0.110+, Uvicorn 0.23+
+- 의존성 설치: `pip install fastapi uvicorn`
+- 개발용 서버 실행: `uvicorn app.server:app --reload --port 8008`
+- 배포용(간단) 실행: `python3 -m app.server`
 - 텍스트 분석 예시(curl):
   - `curl -s -X POST http://localhost:8008/analyze -H 'Content-Type: application/json' -d '{"text":"Jeonju city hit by heavy rain with widespread damage reported..."}' | jq`
- - 브라우저 테스트 페이지: `http://127.0.0.1:8008/` 접속 후 텍스트 입력 → Analyze
+- 자동 문서: `http://127.0.0.1:8008/docs`
 
 API
 - POST `/analyze`
@@ -28,8 +26,9 @@ API
     - `meta`: 부가 정보(언어 추정, 엔티티 유사 정보, 길이 등)
 
 설계 노트
-- 외부 의존성 없음: 불용어/토큰화/빈도 기반의 간단한 휴리스틱으로 오프라인 동작.
-- 플러그형 프로바이더: `app/providers.py`에 LLM 교체를 염두에 둔 인터페이스가 있습니다. 나중에 질문/요약 생성을 LLM API로 라우팅 가능.
+- FastAPI 기반 REST 서버이므로 Uvicorn 또는 Gunicorn으로 확장이 쉽고, `/docs`에서 API 스키마를 확인할 수 있습니다.
+- 질문/요약 로직은 휴리스틱으로 구성되어 외부 LLM 의존성이 없습니다.
+- 기록 데이터는 `data/records.db` SQLite 데이터베이스에 저장되며, `/records` API나 직접 sqlite3를 통해 조회할 수 있습니다. PDF 응답은 요청 시점에 생성됩니다.
 - 확장 로드맵:
   - 입력: OCR(Tesseract 등) 또는 브라우저 확장으로 가시 텍스트 자동 수집
   - NLP: 휴리스틱 요약 → LLM(`SummaryProvider`), 질문 생성 → LLM(`QuestionProvider`)
@@ -40,7 +39,6 @@ API
 - 휴리스틱 요약 특성상 1–8K자 정도 분량에서 품질이 더 안정적입니다.
 
 추가 예시
-- 브라우저 테스트 페이지: `http://127.0.0.1:8008/` 접속 → 텍스트/URL 입력 후 버튼 클릭
 - URL 분석(curl):
   - `curl -s -X POST http://localhost:8008/analyze_url -H 'Content-Type: application/json' -d '{\"url\":\"https://example.com/article\"}' | jq`
 - 영어 토론 시작(curl):
@@ -52,20 +50,41 @@ API
   - 요청: `{ url: string, max_questions?: number }`
   - 설명: URL에서 텍스트를 추출해 분석 결과 반환
 
+- POST `/questions`
+  - 요청: `{ text?: string, url?: string, title?: string, max_questions?: number }`
+  - 설명: 요약/토픽과 함께 최대 N개의 영어 질문만 반환(확장 프로그램에서 사용)
+
 - POST `/chat/start`
-  - 요청: `{ text?: string, url?: string, max_questions?: number }`
+  - 요청: `{ text?: string, url?: string, title?: string, max_questions?: number }`
   - 설명: 영어 토론 세션 시작, 첫 질문과 `session_id` 반환
 
 - POST `/chat/reply`
   - 요청: `{ session_id: string, answer: string }`
   - 설명: 사용자 답변을 받고 다음 영어 질문 반환
 
+- POST `/records/questions`
+  - 요청: `{ items: [{ question, answer }...], meta?: object, title?: string, url?: string, selection_text?: string, summary?: string, topics?: string[] }`
+  - 설명: 확장 프로그램에서 작성한 질문·답변을 저장. 응답으로 `record_id`, `created_at` 반환
+
+- GET `/records`
+  - 쿼리: `?date=YYYY-MM-DD` 선택
+  - 설명: 저장된 기록 목록을 최신순으로 반환
+
+- GET `/records/{record_id}`
+  - 설명: 특정 기록의 전체 JSON 반환
+
+- GET `/records/{record_id}.pdf`
+  - 설명: 기록을 간단한 PDF 문서로 다운로드(기본 CJK 폰트 사용)
+- GET `/records/export.pdf?ids=<id1,id2,...>`
+  - 설명: 여러 기록을 한 PDF로 합쳐 내려받기 (질문/답변 + 토론 기록을 함께 묶을 때 활용)
+
 브라우저 확장(Chrome, MV3)
 - 위치: `ext/chrome`
 - 기능: 현재 탭의 선택 텍스트가 있으면 그것을, 없으면 현재 탭 URL을 로컬 서버로 전송
 - 제공 버튼:
-  - Analyze: `/analyze`(선택 텍스트) 또는 `/analyze_url`(URL)
-  - Discuss (EN): `/chat/start`로 토론 세션 시작 → 팝업 내에서 답변/다음 질문 진행
+  - Question: `/questions`를 호출해 기사/페이지에 대한 질문 5개 생성
+  - Save Answers: 질문별로 입력한 답변을 `/records/questions`에 저장(기록 ID 반환)
+  - Discuss (EN): `/chat/start`로 토론 세션 시작 → 답변을 주고받으며 마지막에 자동으로 기록 저장
 - 서버 주소 입력란: 기본 `http://127.0.0.1:8008` (변경 가능, 동기 저장)
 
 설치 방법
