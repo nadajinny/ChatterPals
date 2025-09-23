@@ -1,20 +1,38 @@
 {
   "manifest_version": 3,
-  "name": "ChatterPals Screen Q&A (MVP)",
-  "version": "0.1.0",
-  "description": "Send current page selection or URL to local analyzer for summary, topics, and English questions. Start an English discussion.",
+  "name": "ChatterPals",
+  "description": "AI-powered language learning assistant",
+  "version": "0.3.1",
   "action": {
-    "default_title": "Analyze current page",
     "default_popup": "popup.html"
   },
+  "icons": {
+    "128": "images/icon-logo.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
   "permissions": [
+    "storage",
     "activeTab",
     "scripting",
-    "storage"
+    "contextMenus"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8008/*",
-    "http://localhost:8008/*"
+    "http://127.0.0.1:8008/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [ "images/icon-logo.png", "popup.html" ],
+      "matches": [ "<all_urls>" ]
+    }
   ]
 }
 
