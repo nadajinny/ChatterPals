@@ -1,176 +1,100 @@
-import re
-from collections import Counter
-from typing import List, Dict, Tuple
+import os
+import json
+import google.generativeai as genai
+from typing import Dict, Any
 
-from .stopwords import STOPWORDS
+# Gemini 모델 설정
+# 참고: API 키는 server.py에서 이미 설정했으므로 여기서 다시 설정할 필요는 없습니다.
+# genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-KO_STOPWORDS = {
-    '그리고', '그러나', '하지만', '그러면서', '그러니까', '그는', '그녀는', '그들이', '그가',
-    '그녀가', '그동안', '이번', '지난', '또한', '또', '다만', '이미', '여전히', '가장', '정도',
-    '위해', '위해서', '대한', '대한민국', '에서는', '에서', '으로', '으로써', '으로서', '부터',
-    '까지', '통해', '관련', '관해', '관한', '대해', '대해서', '등', '등의', '등을', '등이',
-    '등도', '등과', '때문', '때문에', '이날', '이후', '이전', '이상', '이하', '이외', '이렇게',
-    '이같이', '이같은', '이처럼', '이에', '이는', '이와', '있다', '있어', '있는', '있으며',
-    '없다', '없어', '없이', '했다', '하며', '한다고', '밝혔다', '말했다', '전했다', '지적했다',
-    '언급했다', '강조했다', '설명했다', '이라며', '이라고', '라는', '지난해', '오는', '오늘',
-    '내일', '오전', '오후', '기자', '연합뉴스', '뉴스', '사진', '제공'
-}
+def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
+    """
+    2단계 처리 방식을 사용하여 텍스트를 분석하고 고품질 질문을 생성합니다.
+    1단계: 텍스트를 요약하고 핵심 키워드를 추출합니다.
+    2단계: 요약본과 키워드를 바탕으로 다양한 유형의 질문을 생성합니다.
+    """
+    if not text:
+        return {"summary": "", "topics": [], "questions": []}
 
+    try:
+        # --- 1단계: "요약 전문가" AI ---
+        summarizer_model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        summarizer_prompt = f"""
+        당신은 신문사 수석 편집장입니다. 다음 텍스트를 분석하여 아래 JSON 형식에 맞춰 결과를 반환해 주세요.
 
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+        1. `summary`: 텍스트의 핵심 내용을 3-4 문장으로 요약합니다.
+        2. `keywords`: 텍스트의 핵심 주제를 나타내는 키워드를 가장 중요한 순서대로 5개 추출합니다.
 
+        텍스트:
+        ---
+        {text[:10000]} 
+        ---
 
-def split_sentences(text: str) -> List[str]:
-    # 기본 문장 분리기
-    # '.', '!', '?' 기준으로 분리하고 잡음을 최소화합니다.
-    chunks = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [c.strip() for c in chunks if c and not c.isspace()]
+        JSON 출력:
+        """
 
+        summary_response = summarizer_model.generate_content(summarizer_prompt)
+        
+        # AI가 생성한 JSON 문자열을 파싱
+        # 때때로 AI가 코드 블록 마크다운을 포함하므로 제거
+        cleaned_json_str = summary_response.text.strip().replace('```json', '').replace('```', '').strip()
+        summary_data = json.loads(cleaned_json_str)
+        
+        summary = summary_data.get("summary", "")
+        keywords = summary_data.get("keywords", [])
 
-def tokenize(text: str, lang: str = 'en') -> List[str]:
-    # 영문 알파벳 기반 토큰 추출(소문자 변환)
-    tokens = re.findall(r"[A-Za-z][A-Za-z\-']+", text.lower())
-    if lang == 'ko':
-        # 한글 음절 기반 토큰 추가(길이 2 이상)
-        tokens += re.findall(r"[\uac00-\ud7af]{2,}", text)
-    return tokens
-
-
-def keyword_counts(text: str, top_k: int = 12, lang: str = 'en') -> List[Tuple[str, int]]:
-    tokens = tokenize(text, lang=lang)
-    if lang == 'ko':
-        stopwords = STOPWORDS | KO_STOPWORDS
-        filtered = [t for t in tokens if t not in stopwords and len(t) > 1]
-    else:
-        filtered = [t for t in tokens if t not in STOPWORDS and len(t) > 2]
-    freq = Counter(filtered)
-    return freq.most_common(top_k)
-
-
-def extract_keywords(text: str, top_k: int = 8, lang: str = 'en') -> List[str]:
-    return [w for w, _ in keyword_counts(text, max(top_k * 2, 12), lang=lang)][:top_k]
+        if not summary:
+             raise ValueError("1단계 요약 생성에 실패했습니다.")
 
 
-def guess_language(text: str) -> str:
-    # 매우 단순한 판별: 한글 포함 시 'ko', 아니면 'en'
-    if re.search(r"[\uac00-\ud7af]", text):
-        return 'ko'
-    return 'en'
+        # --- 2단계: "질문 생성가" AI ---
+        question_generator_model = genai.GenerativeModel('gemini-1.5-flash')
 
+        question_generator_prompt = f"""
+        당신은 학생들의 비판적 사고력을 키우는 최고의 영어 교사입니다. 학생들을 위해서 질문은 영어로 만들어주세요
+        아래에 제공된 "핵심 요약"과 "주요 키워드"를 바탕으로, 다음 세 가지 유형의 질문을 합해서 총 {max_questions}개 생성해 주세요.
 
-def summarize_text(text: str, max_sentences: int = 2, lang: str = 'en') -> str:
-    # 단순 빈도 기반 추출 요약기
-    sentences = split_sentences(text)
-    if not sentences:
-        return _normalize(text[:160])
+        1. **사실 확인 질문 (Factual Questions):** 요약된 내용에서 답을 직접 찾을 수 있는 질문.
+        2. **추론 질문 (Inferential Questions):** 내용에 암시된 의미나 저자의 의도를 파악해야 하는 질문.
+        3. **평가 질문 (Evaluative Questions):** 독자의 개인적인 의견이나 가치 판단을 묻는 질문.
 
-    freq = dict(keyword_counts(text, top_k=64, lang=lang))
-    if not freq:
-        return " ".join(sentences[:max_sentences])
+        질문은 반드시 "주요 키워드"와 관련된 내용이어야 합니다. 결과는 JSON 형식의 질문 목록으로만 반환해 주세요.
 
-    scores: List[Tuple[float, str]] = []
-    for s in sentences:
-        tokens = tokenize(s, lang=lang)
-        if not tokens:
-            continue
-        score = sum(freq.get(t, 0) for t in tokens) / (len(tokens) + 1e-6)
-        scores.append((score, s))
+        핵심 요약:
+        ---
+        {summary}
+        ---
 
-    scores.sort(key=lambda x: x[0], reverse=True)
-    selected = [s for _, s in scores[:max_sentences]]
-    # 가독성을 위해 원문 순서 유지
-    selected_sorted = sorted(selected, key=lambda s: sentences.index(s))
-    return _normalize(" ".join(selected_sorted))
+        주요 키워드: {", ".join(keywords)}
 
+        JSON 출력 (질문 목록):
+        """
+        
+        questions_response = question_generator_model.generate_content(question_generator_prompt)
+        cleaned_json_str = questions_response.text.strip().replace('```json', '').replace('```', '').strip()
+        questions = json.loads(cleaned_json_str)
 
-def extract_entities_like(text: str, lang: str = 'en') -> Dict[str, List[str]]:
-    # 휴리스틱: 대문자로 시작하는 연속 어구를 고유명사 유사 패턴으로 간주, 간단한 장소 단서 포함
-    if lang == 'ko':
-        tokens = [t for t, _ in keyword_counts(text, top_k=32, lang=lang)]
-        propns = [t for t in tokens if len(t) > 1 and t not in KO_STOPWORDS]
-        locations: List[str] = []
-        for m in re.finditer(r"([\uac00-\ud7af]{2,})(시|도|군|구|읍|면|동|리)", text):
-            locations.append("".join(m.groups()))
         return {
-            'proper_nouns': propns[:8],
-            'locations': list(dict.fromkeys(locations))[:4],
+            "summary": summary,
+            "topics": keywords, # 기존 'topics' 키에 키워드를 할당
+            "questions": questions,
         }
-    propns = re.findall(r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\b", text)
-    # 흔한 문장 시작어 제거
-    common = {"The", "This", "That", "A", "An", "But", "And", "However", "In", "On"}
-    propns = [p for p in propns if p.split()[0] not in common]
 
-    locations: List[str] = []
-    for m in re.finditer(r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s+(city|province|county|district|state)\b", text):
-        locations.append(m.group(0))
-
-    return {
-        'proper_nouns': list(dict.fromkeys(propns))[:8],
-        'locations': list(dict.fromkeys(locations))[:4],
-    }
-
-
-def generate_questions(topics: List[str], summary: str, entities: Dict[str, List[str]], max_q: int = 5, lang: str = 'en') -> List[str]:
-    if not topics and summary:
-        summary_tokens = tokenize(summary, lang=lang)
-        if lang == 'ko':
-            stopwords = STOPWORDS | KO_STOPWORDS
-            summary_tokens = [t for t in summary_tokens if t not in stopwords and len(t) > 1]
-        else:
-            summary_tokens = [t for t in summary_tokens if t not in STOPWORDS and len(t) > 2]
-        counts = Counter(summary_tokens)
-        if counts:
-            topics = [w for w, _ in counts.most_common(2)]
-    if not topics and not summary:
-        return [
-            "What stands out to you about this content?",
-            "What key points do you think are most important?",
-        ][:max_q]
-
-    topic = topics[0] if topics else "this topic"
-    topic2 = topics[1] if len(topics) > 1 else topic
-    # 빈 리스트가 존재할 때 get(...)[0]로 접근하면 IndexError가 발생할 수 있으므로 안전 처리
-    locs = entities.get('locations') or []
-    propns = entities.get('proper_nouns') or []
-    location = (locs[0] if len(locs) > 0 else None) or (propns[0] if len(propns) > 0 else None)
-
-    base = []
-    base.append(f"How would you summarize the core issue around {topic}?")
-    if location:
-        base.append(f"What potential impacts could this have on people in {location}?")
-    base.append(f"Which evidence in the text supports claims about {topic2}?")
-    base.append(f"What are possible solutions or next steps regarding {topic}?")
-    base.append(f"What risks or uncertainties remain about {topic} and why?")
-    base.append("What is your personal perspective on this situation?")
-
-    # 중복 제거 및 개수 제한
-    seen = set()
-    deduped = []
-    for q in base:
-        if q not in seen:
-            deduped.append(q)
-            seen.add(q)
-        if len(deduped) >= max_q:
-            break
-    return deduped
-
-
-def analyze(text: str, max_questions: int = 5) -> Dict:
-    text = _normalize(text)
-    lang = guess_language(text)
-    topics = extract_keywords(text, top_k=8, lang=lang)
-    summary = summarize_text(text, max_sentences=2, lang=lang)
-    entities = extract_entities_like(text, lang=lang)
-    questions = generate_questions(topics, summary, entities, max_q=max_questions, lang=lang)
-
-    return {
-        'summary': summary,
-        'topics': topics,
-        'questions': questions,
-        'meta': {
-            'language_guess': lang,
-            'entities': entities,
-            'length': len(text),
-        }
-    }
+    except Exception as e:
+        print(f"AI 분석 중 오류 발생: {e}")
+        # 오류 발생 시, 간단한 분석으로 대체 (Fallback)
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = f"다음 텍스트에서 토론 질문 {max_questions}개를 만들어줘: {text[:2000]}"
+            response = model.generate_content(prompt)
+            # 간단한 텍스트 분리
+            questions = [q.strip() for q in response.text.split('\n') if q.strip()]
+            return {
+                "summary": text[:200] + "...",
+                "topics": [],
+                "questions": questions,
+            }
+        except Exception as fallback_e:
+            print(f"Fallback 분석 중 오류 발생: {fallback_e}")
+            return {"summary": "분석 중 오류가 발생했습니다.", "topics": [], "questions": []}

@@ -1,97 +1,45 @@
-import re
-from html.parser import HTMLParser
-from urllib import request, error
-from typing import Tuple, Dict
+import requests
+from bs4 import BeautifulSoup
+from readability import Document
 
-
-UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
-)
-
-
-def _decode_best(data: bytes, content_type: str = "") -> Tuple[str, str]:
-    """Try to decode bytes → str using likely encodings.
-    Returns (text, encoding).
+def extract_from_url(url: str) -> tuple[str, dict]:
     """
-    charset = None
-    if content_type:
-        m = re.search(r"charset=([^;]+)", content_type, re.I)
-        if m:
-            charset = m.group(1).strip().lower()
-    candidates = []
-    if charset:
-        candidates.append(charset)
-    candidates += ["utf-8", "euc-kr", "cp949", "latin-1"]
-    for enc in candidates:
-        try:
-            return data.decode(enc), enc
-        except Exception:
-            continue
-    return data.decode("utf-8", errors="ignore"), "utf-8"
+    주어진 URL에서 웹페이지의 본문 텍스트와 메타데이터를 추출합니다.
+    추출된 텍스트가 너무 짧으면 오류를 발생시켜 수동 선택을 유도합니다.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
 
+        # Readability를 사용하여 본문 추출
+        doc = Document(response.text)
+        title = doc.title()
+        content_html = doc.summary()
+        
+        # HTML 태그를 제거하여 순수 텍스트만 추출
+        soup = BeautifulSoup(content_html, 'lxml')
+        text = soup.get_text(separator='\n', strip=True)
 
-def fetch_url(url: str, timeout: float = 10.0) -> Tuple[str, Dict]:
-    """Fetch URL and return HTML string and meta info."""
-    req = request.Request(url, headers={"User-Agent": UA})
-    with request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-        ctype = resp.headers.get("Content-Type", "")
-        text, enc = _decode_best(raw, ctype)
-        return text, {
-            "final_url": getattr(resp, 'url', url),
-            "status": resp.status,
-            "content_type": ctype,
-            "encoding": enc,
-            "length": len(text),
+        # 개선된 부분: 추출된 텍스트가 유의미한지 길이를 확인
+        # "로그인하세요" 같은 짧은 문구로 토론이 시작되는 것을 방지합니다.
+        if not text or len(text) < 100: # 100자 미만은 유의미한 콘텐츠가 아니라고 판단
+            raise ValueError(
+                f"자동으로 본문을 추출할 수 없거나 내용이 너무 짧습니다. "
+                f"사이트가 동적으로 로딩되거나 분석이 어려운 구조일 수 있습니다. "
+                f"분석하고 싶은 부분을 마우스로 직접 선택한 후 다시 시도해 주세요."
+            )
+
+        meta = {
+            "title": title,
+            "url": url,
         }
+        return text, meta
 
-
-class _TextExtractor(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self._texts = []
-        self._skip = 0  # inside script/style/noscript
-
-    def handle_starttag(self, tag, attrs):
-        if tag in ("script", "style", "noscript"):  # skip content
-            self._skip += 1
-        elif tag in ("p", "br", "div", "section", "article", "li", "h1", "h2", "h3", "h4"):
-            self._texts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in ("script", "style", "noscript") and self._skip > 0:
-            self._skip -= 1
-        elif tag in ("p", "div", "section", "article", "li"):
-            self._texts.append("\n")
-
-    def handle_data(self, data):
-        if self._skip:
-            return
-        if data and not data.isspace():
-            self._texts.append(data)
-
-    def text(self) -> str:
-        joined = "".join(self._texts)
-        # collapse whitespace
-        joined = re.sub(r"\s+", " ", joined)
-        # restore simple newlines around periods to help sentence splitters
-        joined = re.sub(r"\s*\.(\s+)", ". \\1", joined)
-        return joined.strip()
-
-
-def html_to_text(html: str, max_chars: int = 30000) -> str:
-    parser = _TextExtractor()
-    # limit input size to protect memory
-    html = html[: max_chars * 4]
-    parser.feed(html)
-    return parser.text()[:max_chars]
-
-
-def extract_from_url(url: str, timeout: float = 10.0) -> Tuple[str, Dict]:
-    html, meta = fetch_url(url, timeout=timeout)
-    text = html_to_text(html)
-    meta = {**meta, "extracted_chars": len(text)}
-    return text, meta
+    except requests.RequestException as e:
+        print(f"URL로부터 콘텐츠를 가져오는 데 실패했습니다: {e}")
+        # 클라이언트에게 전달될 오류 메시지를 표준화합니다.
+        raise ValueError(f"URL에 접근하는 중 오류가 발생했습니다: {url}")
 
