@@ -11,11 +11,8 @@ beautifulsoup4==4.13.5
 readability-lxml==0.8.4.1
 lxml==6.0.2
 
-# Google SDK (둘 다 쓰면 유지, 한쪽으로 통일하려면 아래 참고)
+
 google-genai==1.38.0
 google-generativeai==0.8.5
 
-# (선택) 런타임 유틸
-websockets==15.0.1
-tenacity==9.1.2
-tqdm==4.67.1
+
