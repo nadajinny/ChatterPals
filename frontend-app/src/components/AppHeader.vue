@@ -15,6 +15,7 @@
         <RouterLink to="/aitutor">AI 튜터</RouterLink>
         <RouterLink to="/studylog">Study Log</RouterLink>
         <RouterLink to="/settings">Settings</RouterLink>
+        <RouterLink to="/mypage">My Page</RouterLink>
       </nav>
     </div>
   </header>
