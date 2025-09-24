@@ -1,0 +1,161 @@
+/* --- 기본 스타일 --- */
+body {
+    width: 380px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    margin: 0;
+    color: #24292f;
+    background-color: #f6f8fa;
+}
+.container { padding: 16px; }
+.section { margin-bottom: 12px; }
+.section-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 8px;
+}
+.row { margin-bottom: 10px; }
+.divider { border: 0; height: 1px; background-color: #d0d7de; margin: 24px 0; }
+.button-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.result-box {
+    padding: 10px;
+    border-radius: 6px;
+    background-color: #fff;
+    min-height: 20px;
+    font-size: 13px;
+    line-height: 1.5;
+    border: 1px solid #d0d7de;
+}
+
+/* --- 헤더 및 닫기 버튼 스타일 --- */
+.header-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #57606a;
+    padding: 0 8px;
+    margin-right: auto; /* 이 버튼만 왼쪽으로 밀어냅니다 */
+}
+.close-btn:hover {
+    color: #000;
+}
+.homepage-link {
+    font-size: 13px;
+    text-decoration: none;
+    color: #0969da;
+}
+
+/* --- 버튼 & 선택 메뉴 스타일 --- */
+button, select {
+    background-color: #f6f8fa;
+    border: 1px solid rgba(27, 31, 36, 0.15);
+    border-radius: 6px;
+    color: #24292f;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    padding: 5px 12px;
+    transition: background-color 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+}
+button { cursor: pointer; }
+button:hover { background-color: #f3f4f6; }
+button:disabled { color: #8c959f; cursor: not-allowed; background-color: #f6f8fa; }
+#send {
+    background-color: #1f883d;
+    color: white;
+    border-color: rgba(27, 31, 36, 0.15);
+}
+#send:hover { background-color: #1a7f37; }
+
+/* --- 입력창 및 질문/답변 스타일 --- */
+.input-group { display: flex; gap: 8px; }
+#answer { flex-grow: 1; border-radius: 6px; border: 1px solid #d0d7de; padding: 5px 12px; }
+.questions-container { display: flex; flex-direction: column; gap: 12px; }
+.question-item {
+    padding: 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background-color: #fff;
+}
+.question-text { font-weight: 500; margin-bottom: 8px; }
+.question-answer {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid #d0d7de;
+    padding: 8px;
+    resize: vertical;
+    font-size: 13px;
+    min-height: 40px;
+    box-sizing: border-box;
+}
+
+/* --- 평가 결과 스타일 --- */
+.evaluation-result {
+    margin-top: 12px;
+    padding: 10px;
+    background-color: #f6f8fa;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none; /* 평소에는 숨김 */
+}
+.evaluation-scores {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dce2e8;
+    font-weight: 500;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.score-item .label { color: #57606a; }
+.score-item .value { color: #0969da; font-weight: 600; }
+.feedback-text { line-height: 1.6; margin: 0; }
+
+/* --- 요약 & 토픽 스타일 --- */
+.summary-box {
+    background-color: #fff;
+    border: 1px solid #d0d7de;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 10px;
+}
+.topics-box { display: flex; flex-wrap: wrap; gap: 6px; }
+.topic-tag {
+    background-color: #ddf4ff;
+    color: #0969da;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* --- 음성 UI 스타일 --- */
+.voice-result-container { padding: 10px; border-radius: 6px; background-color: #ffffff; border: 1px solid #d0d7de; }
+.voice-result-container p { margin: 8px 0; }
+.voice-result-container strong { color: #0969da; }
+.voice-status { font-size: 12px; color: #57606a; text-align: center; margin-top: 12px !important; }
+#ai-audio-player { width: 100%; margin-top: 10px; height: 40px; }
+
+/* --- 팝업 전용 스위치 UI 스타일 --- */
+.popup-control { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; width: 250px; }
+body:has(#popup-view) { width: auto; }
+.switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+.slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: #2196F3; }
+input:checked + .slider:before { transform: translateX(26px); }
