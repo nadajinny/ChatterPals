@@ -1,7 +1,7 @@
 // content.js
 // -----------------------------------------------------------------------------
 // ChatterPals Content Script
-// - 페이지에 플로팅 버튼(FAB) 주입
+// - 페이지에 플로팅 버튼(FAB) 주입 (드래그로 위치 이동 & 위치 저장)
 // - 사이드바(iframe) 열기/닫기
 // - popup → background → content 메시지 처리
 // - 페이지/선택 텍스트 추출
@@ -16,7 +16,7 @@
   let fabEl = null;
 
   // ---------------------------
-  // 초기화: 플로팅 버튼 가시성 반영
+  // 초기화: 플로팅 버튼 가시성 반영 + 위치 복원
   // ---------------------------
   chrome.storage.local.get(['floatingButtonVisible'], (res) => {
     const visible = res.floatingButtonVisible !== false; // 기본 true
@@ -35,18 +35,21 @@
     fabEl.id = FAB_ID;
     fabEl.type = 'button';
     fabEl.setAttribute('aria-label', 'Open ChatterPals sidebar');
-    // 시각 아이콘은 CSS background-image로 표시 → 텍스트 비움
-    fabEl.textContent = '';
+    fabEl.textContent = ''; // 아이콘은 CSS background-image 사용
 
-    fabEl.addEventListener('click', () => {
-      openSidebar();
-    });
+    // 위치 복원
+    restoreFabPosition();
+
+    // 클릭(사이드바 열기) + 드래그 이동 로직
+    enableFabDragAndClick();
 
     document.documentElement.appendChild(fabEl);
   }
 
   function removeFAB() {
-    if (fabEl && fabEl.parentNode) fabEl.parentNode.removeChild(fabEl);
+    if (fabEl && fabEl.parentNode) {
+      fabEl.parentNode.removeChild(fabEl);
+    }
     fabEl = null;
   }
 
@@ -68,7 +71,7 @@
     sidebarIframe.src = SIDEBAR_URL;
     document.documentElement.appendChild(sidebarIframe);
 
-    // CSS 트랜지션을 위해 다음 틱에 visible 부여
+    // CSS 트랜지션을 위해 다음 프레임에 visible 추가
     requestAnimationFrame(() => {
       sidebarIframe?.classList.add('visible');
     });
@@ -77,10 +80,7 @@
   function closeSidebar() {
     const iframe = document.getElementById(SIDEBAR_IFRAME_ID);
     if (!iframe) return;
-
-    // 닫힐 때 슬라이드아웃
     iframe.classList.remove('visible');
-    // 트랜지션 시간(약 280ms) 후 제거
     setTimeout(() => {
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       sidebarIframe = null;
@@ -143,13 +143,168 @@
     return false;
   });
 
-  // (선택) ESC 키로 닫기
+  // ESC로 사이드바 닫기
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSidebar();
   });
 
-  // (선택) 뷰포트가 아주 작을 때 FAB 위치 미세 조정 (CSS 미디어쿼리로도 처리됨)
-  window.addEventListener('resize', () => {
-    // CSS에서 처리하므로 빈 훅으로 유지하거나 필요 시 로직 추가
-  });
+  // ---------------------------
+  // FAB 드래그 & 클릭 처리
+  // ---------------------------
+  function enableFabDragAndClick() {
+    if (!fabEl) return;
+
+    let isDragging = false;
+    let didDrag = false;
+    let startX = 0, startY = 0;
+    let offsetX = 0, offsetY = 0;
+
+    const onMouseDown = (e) => {
+      isDragging = true;
+      didDrag = false;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = fabEl.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+
+      fabEl.style.transition = 'none';   // 드래그 중엔 트랜지션 제거
+      // 좌표계: 드래그 시작 시 left/top 모드로 전환
+      fabEl.style.right = 'auto';
+      fabEl.style.bottom = 'auto';
+      fabEl.style.position = 'fixed';
+
+      // 선택 방지
+      document.body.style.userSelect = 'none';
+    };
+
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+
+      // 드래그 감지(클릭과 구분)
+      const moved = Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY);
+      if (moved > 3) didDrag = true;
+
+      // 새 좌표 계산
+      const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+      const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+      const elW = fabEl.offsetWidth || 48;
+      const elH = fabEl.offsetHeight || 48;
+
+      let newLeft = e.clientX - offsetX;
+      let newTop  = e.clientY - offsetY;
+
+      // 뷰포트 안에서만 이동되도록 클램프
+      newLeft = Math.max(4, Math.min(newLeft, vw - elW - 4));
+      newTop  = Math.max(4, Math.min(newTop, vh - elH - 4));
+
+      fabEl.style.left = `${newLeft}px`;
+      fabEl.style.top  = `${newTop}px`;
+    };
+
+    const onMouseUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // 위치 저장
+      persistFabPosition();
+
+      // 원래 트랜지션 복원
+      fabEl.style.transition = '';
+
+      // 선택 방지 해제
+      document.body.style.userSelect = '';
+
+      // 드래그가 아니었다면 클릭으로 간주 → 사이드바 열기
+      if (!didDrag) {
+        openSidebar();
+      }
+    };
+
+    // 클릭 핸들러는 드래그와 충돌하지 않도록 제거(위 onMouseUp에서 처리)
+    fabEl.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    // 터치 지원
+    fabEl.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      onMouseDown({ clientX: t.clientX, clientY: t.clientY });
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      onMouseMove({ clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      onMouseUp();
+    }, { passive: true });
+  }
+
+  function persistFabPosition() {
+    if (!fabEl) return;
+    const rect = fabEl.getBoundingClientRect();
+    const pos = { left: rect.left, top: rect.top };
+    chrome.storage.local.set({ fabPosition: pos });
+  }
+
+  function restoreFabPosition() {
+    chrome.storage.local.get(['fabPosition'], (res) => {
+      const pos = res.fabPosition;
+      if (!fabEl) return;
+
+      if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)) {
+        // 저장된 좌표가 뷰포트 밖이면 보정
+        const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+        const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+        const elW = 48, elH = 48;
+
+        let left = Math.max(4, Math.min(pos.left, vw - elW - 4));
+        let top  = Math.max(4, Math.min(pos.top,  vh - elH - 4));
+
+        fabEl.style.position = 'fixed';
+        fabEl.style.left = `${left}px`;
+        fabEl.style.top  = `${top}px`;
+        fabEl.style.right = 'auto';
+        fabEl.style.bottom = 'auto';
+      } else {
+        // 저장된 값이 없으면 CSS 기본(right/bottom) 사용
+        fabEl.style.left = '';
+        fabEl.style.top = '';
+        fabEl.style.right = '';
+        fabEl.style.bottom = '';
+      }
+    });
+
+    // 윈도우 리사이즈 시, 화면 밖으로 나가있으면 살짝 안쪽으로 보정
+    window.addEventListener('resize', () => {
+      if (!fabEl) return;
+      const rect = fabEl.getBoundingClientRect();
+      const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+      const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+      const elW = fabEl.offsetWidth || 48;
+      const elH = fabEl.offsetHeight || 48;
+
+      let left = rect.left;
+      let top  = rect.top;
+
+      let changed = false;
+      if (left < 4) { left = 4; changed = true; }
+      if (top  < 4) { top  = 4; changed = true; }
+      if (left > vw - elW - 4) { left = vw - elW - 4; changed = true; }
+      if (top  > vh - elH - 4) { top  = vh - elH - 4; changed = true; }
+
+      if (changed) {
+        fabEl.style.position = 'fixed';
+        fabEl.style.left = `${left}px`;
+        fabEl.style.top  = `${top}px`;
+        fabEl.style.right = 'auto';
+        fabEl.style.bottom = 'auto';
+        chrome.storage.local.set({ fabPosition: { left, top } });
+      }
+    });
+  }
 })();
