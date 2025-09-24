@@ -215,7 +215,7 @@ function initializeSidebar() {
             resultEl.style.display = 'block';
         });
     }
-
+//--평가함수--//
     async function handleSaveEvaluation() {
         if (!lastEvaluationResult) {
             resultDiv.textContent = '저장할 평가 결과가 없습니다. 먼저 평가를 진행해주세요.';
@@ -248,7 +248,7 @@ function initializeSidebar() {
             saveBtn.disabled = false;
         }
     }
-    
+//--토론세션--//
     async function startChatSession() {
         let textForChat = lastAnalyzedText;
         if (!textForChat) {
@@ -305,7 +305,7 @@ function initializeSidebar() {
              console.error('채팅 응답 API 호출 실패:', error);
         }
     }
-
+//--녹음세션--//
     function handleRecordClick() {
         if (!isRecording) {
             chrome.runtime.sendMessage({ action: 'requestMicrophonePermission' });
