@@ -20,6 +20,26 @@
         <a href="http://localhost:5173/" target="_blank" class="homepage-link">🏠 홈페이지로 이동</a>
     </div>
 
+    <div class="section account-section" id="account-section">
+        <div id="account-signed-in" style="display:none;">
+            <p class="account-greeting">안녕하세요, <span id="account-nickname"></span>님</p>
+            <button id="logoutBtn" class="btn btn-outline">로그아웃</button>
+        </div>
+        <form id="login-form" class="account-form" autocomplete="off">
+            <h3 class="section-title">로그인</h3>
+            <label class="field">
+                <span>아이디</span>
+                <input id="login-username" type="text" name="username" required minlength="3" />
+            </label>
+            <label class="field">
+                <span>비밀번호</span>
+                <input id="login-password" type="password" name="password" required />
+            </label>
+            <button type="submit" class="btn btn-primary">로그인</button>
+            <p id="login-status" class="hint"></p>
+        </form>
+    </div>
+
     <div id="summary-view" class="section" style="display: none;">
         <h3 class="section-title">AI 요약</h3>
         <div id="summary" class="summary-box"></div>
@@ -54,11 +74,34 @@
 
     <div id="chat" class="section" style="display:none;">
         <h4 class="section-title">Discuss</h4>
-        <div>세션: <code id="sid">-</code></div>
-        <div style="margin:6px 0;">AI: <span id="q">(없음)</span></div>
+        <div class="chat-meta">
+            <div>세션: <code id="sid">-</code></div>
+            <label class="chat-limit">
+                질문 수 설정
+                <select id="chat-question-limit">
+                    <option value="3">3개</option>
+                    <option value="5" selected>5개</option>
+                    <option value="7">7개</option>
+                    <option value="10">10개</option>
+                </select>
+            </label>
+        </div>
+        <div class="chat-status">AI: <span id="q">(없음)</span></div>
         <div class="row input-group">
           <input id="answer" type="text" placeholder="영어로 답변" />
           <button id="send">Send</button>
+        </div>
+        <div class="row chat-actions">
+            <button id="chatEnd" class="btn btn-danger" style="display:none;">🛑 조기 종료</button>
+        </div>
+        <div id="chat-evaluation" class="discussion-eval" style="display:none;">
+            <h5>AI 평가</h5>
+            <div class="eval-scores">
+                <span>문법: <strong id="chat-grammar-score">-</strong></span>
+                <span>어휘: <strong id="chat-vocab-score">-</strong></span>
+                <span>논리: <strong id="chat-clarity-score">-</strong></span>
+            </div>
+            <p id="chat-feedback"></p>
         </div>
     </div>
 

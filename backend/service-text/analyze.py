@@ -18,7 +18,7 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
 
     try:
         # --- 1단계: "요약 전문가" AI ---
-        summarizer_model = genai.GenerativeModel('gemini-1.5-flash')
+        summarizer_model = genai.GenerativeModel('gemini-2.0-flash-lite-preview')
         
         summarizer_prompt = f"""
         당신은 신문사 수석 편집장입니다. 다음 텍스트를 분석하여 아래 JSON 형식에 맞춰 결과를 반환해 주세요.
@@ -49,7 +49,7 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
 
 
         # --- 2단계: "질문 생성가" AI ---
-        question_generator_model = genai.GenerativeModel('gemini-1.5-flash')
+        question_generator_model = genai.GenerativeModel('gemini-2.0-flash-lite-preview')
 
         question_generator_prompt = f"""
         당신은 학생들의 비판적 사고력을 키우는 최고의 영어 교사입니다. 학생들을 위해서 질문은 영어로 만들어주세요
@@ -85,7 +85,7 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
         print(f"AI 분석 중 오류 발생: {e}")
         # 오류 발생 시, 간단한 분석으로 대체 (Fallback)
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash-lite-preview')
             prompt = f"다음 텍스트에서 토론 질문 {max_questions}개를 만들어줘: {text[:2000]}"
             response = model.generate_content(prompt)
             # 간단한 텍스트 분리

@@ -10,7 +10,7 @@ class ChatSession:
     def __init__(self, text: str, **kwargs):
         self.text = text
         # Gemini 모델을 직접 초기화합니다.
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.0-flash-lite-preview')
         self.questions: List[str] = []
         self.q_index = 0
         self.history: List[Dict] = []
@@ -18,6 +18,8 @@ class ChatSession:
         self.title = kwargs.get('title', '')
         self.selection_text = kwargs.get('selection_text', '')
         self.record_id: Optional[str] = None
+        self.user_id: Optional[str] = kwargs.get('user_id')
+        self.max_questions: int = int(kwargs.get('max_q') or kwargs.get('max_questions') or 6)
 
     def first_question(self) -> str:
         # AI가 직접 첫 질문을 생성하도록 프롬프트를 구성합니다.
@@ -33,9 +35,12 @@ class ChatSession:
         response = self.model.generate_content(prompt)
         first_q = response.text.strip()
         self.questions.append(first_q)
+        self.q_index = 1
         return first_q
 
     def next_question(self) -> str:
+        if len(self.questions) >= self.max_questions:
+            return self._closing_message()
         self.q_index += 1
         # 대화 기록을 바탕으로 AI가 후속 질문을 생성합니다.
         prompt = f"""
@@ -54,11 +59,11 @@ class ChatSession:
         """
         response = self.model.generate_content(prompt)
         next_q = response.text.strip()
-        
-        # 5번의 질문-답변 후 토론을 자연스럽게 마무리합니다.
-        if self.q_index > 5:
-            return "훌륭한 토론이었습니다. 다른 주제로 다시 이야기 나눠요!"
+        self.questions.append(next_q)
         return next_q
+
+    def _closing_message(self) -> str:
+        return "훌륭한 토론이었습니다. 다른 주제로 다시 이야기 나눠요!"
 
 
 class ChatManager:
@@ -80,7 +85,8 @@ class ChatManager:
             history=sess.history,
             initial_questions=sess.questions,
             meta=record_meta,
-            source_text=text[:4000]
+            source_text=text[:4000],
+            user_id=sess.user_id,
         )
         sess.record_id = record.get('id')
 
@@ -101,11 +107,30 @@ class ChatManager:
         done = q.startswith("훌륭한 토론이었습니다")
 
         # 기록을 업데이트합니다.
-        save_discussion_record(history=sess.history, record_id=sess.record_id, initial_questions=sess.questions)
+        save_discussion_record(
+            history=sess.history,
+            record_id=sess.record_id,
+            initial_questions=sess.questions,
+            user_id=sess.user_id,
+        )
         
         if done:
             self.sessions.pop(session_id, None)
         return {"question": q, "done": done, "record_id": sess.record_id}
+
+    def end(self, session_id: str) -> Dict:
+        sess = self.sessions.pop(session_id, None)
+        if not sess:
+            return {"error": "invalid_session"}
+        closing = sess._closing_message()
+        sess.history.append({"role": "ai", "content": closing})
+        save_discussion_record(
+            history=sess.history,
+            record_id=sess.record_id,
+            initial_questions=sess.questions,
+            user_id=sess.user_id,
+        )
+        return {"message": closing, "done": True, "record_id": sess.record_id}
 
 
 MANAGER = ChatManager()

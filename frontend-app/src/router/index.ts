@@ -5,6 +5,7 @@ import AITutor from '../views/AITutor.vue'
 import StudyLog from '../views/StudyLog.vue'
 import Settings from '../views/Settings.vue'
 import MyPage from '../views/MyPage.vue'
+import RecordDetail from '../views/RecordDetail.vue'
 const routes = [
   {
     path: '/',     
@@ -35,6 +36,12 @@ const routes = [
     path: '/mypage', 
     name: 'MyPage', 
     component: MyPage
+  },
+  {
+    path: '/records/:id',
+    name: 'RecordDetail',
+    component: RecordDetail,
+    props: true,
   }
 ]
 

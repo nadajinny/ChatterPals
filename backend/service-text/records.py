@@ -33,6 +33,17 @@ def _connect() -> sqlite3.Connection:
     conn.execute('PRAGMA journal_mode=WAL;')
     conn.execute(
         '''
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            nickname TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        '''
+    )
+    conn.execute(
+        '''
         CREATE TABLE IF NOT EXISTS records (
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL,
@@ -41,10 +52,17 @@ def _connect() -> sqlite3.Connection:
             date TEXT NOT NULL,
             payload TEXT NOT NULL,
             meta TEXT NOT NULL,
-            evaluation TEXT 
+            evaluation TEXT,
+            user_id TEXT REFERENCES users(id) ON DELETE SET NULL
         )
         '''
     )
+    # 기존 데이터베이스에 user_id 컬럼이 없다면 추가합니다.
+    cur = conn.execute("PRAGMA table_info(records)")
+    columns = {row[1] for row in cur.fetchall()}
+    if 'user_id' not in columns:
+        conn.execute('ALTER TABLE records ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE SET NULL')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id)')
     conn.commit()
     return conn
 
@@ -61,6 +79,7 @@ def _row_to_record(row: sqlite3.Row) -> Dict:
         'date': row['date'],
         'payload': json.loads(row['payload']) if row['payload'] else None,
         'meta': json.loads(row['meta']) if row['meta'] else None,
+        'user_id': row['user_id'] if 'user_id' in row.keys() else None,
     }
     # evaluation 컬럼이 존재하고, 값이 있을 때만 파싱합니다.
     if 'evaluation' in row.keys() and row['evaluation']:
@@ -71,49 +90,106 @@ def _row_to_record(row: sqlite3.Row) -> Dict:
     return record
 
 
+def _row_to_user(row: sqlite3.Row) -> Dict:
+    return {
+        'id': row['id'],
+        'username': row['username'],
+        'nickname': row['nickname'],
+        'created_at': row['created_at'],
+        'password_hash': row['password_hash'],
+    }
+
+
+def create_user(username: str, nickname: str, password_hash: str) -> Dict:
+    username = username.strip().lower()
+    now = _now_iso()
+    user_id = str(uuid.uuid4())
+    try:
+        _CONN.execute(
+            'INSERT INTO users (id, username, nickname, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
+            (user_id, username, nickname, password_hash, now),
+        )
+        _CONN.commit()
+    except sqlite3.IntegrityError as exc:
+        raise ValueError('username_taken') from exc
+    return get_user_by_id(user_id)
+
+
+def update_user_nickname(user_id: str, nickname: str) -> Dict:
+    _CONN.execute('UPDATE users SET nickname = ? WHERE id = ?', (nickname, user_id))
+    _CONN.commit()
+    return get_user_by_id(user_id)
+
+
+def get_user_by_username(username: str) -> Optional[Dict]:
+    cur = _CONN.execute('SELECT * FROM users WHERE username = ?', (username.strip().lower(),))
+    row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_user(row)
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict]:
+    cur = _CONN.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_user(row)
+
+
 def save_record(
     record_type: str,
     payload: Dict,
     meta: Optional[Dict] = None,
     evaluation: Optional[Dict] = None, 
     *,
+    user_id: Optional[str] = None,
     record_id: Optional[str] = None,
     created_at: Optional[str] = None,
     date: Optional[str] = None,
 ) -> Dict:
     now = _now_iso()
     rec_id = record_id or str(uuid.uuid4())
-    cur = _CONN.execute('SELECT created_at, date, meta FROM records WHERE id = ?', (rec_id,))
+    cur = _CONN.execute('SELECT created_at, date, meta, user_id, evaluation FROM records WHERE id = ?', (rec_id,))
     existing = cur.fetchone()
 
     if existing:
         created = existing['created_at']
         day = existing['date']
-        existing_meta = json.loads(existing['meta'])
+        existing_meta = json.loads(existing['meta']) if existing['meta'] else {}
+        existing_user_id = existing['user_id']
+        existing_evaluation_json = existing['evaluation']
     else:
         created = created_at or now
         day = date or created[:10]
         existing_meta = {}
+        existing_user_id = None
+        existing_evaluation_json = None
 
     meta_data = meta if meta is not None else existing_meta
     meta_json = json.dumps(meta_data, ensure_ascii=False)
     payload_json = json.dumps(payload, ensure_ascii=False)
     # evaluation 데이터를 JSON 문자열로 변환합니다.
-    evaluation_json = json.dumps(evaluation, ensure_ascii=False) if evaluation else None
+    if evaluation is None:
+        evaluation_json = existing_evaluation_json
+    else:
+        evaluation_json = json.dumps(evaluation, ensure_ascii=False)
+    owner_id = user_id if user_id is not None else existing_user_id
 
     _CONN.execute(
         '''
-        INSERT INTO records (id, type, created_at, updated_at, date, payload, meta, evaluation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO records (id, type, created_at, updated_at, date, payload, meta, evaluation, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             type = excluded.type,
             updated_at = excluded.updated_at,
             date = excluded.date,
             payload = excluded.payload,
             meta = excluded.meta,
-            evaluation = excluded.evaluation
+            evaluation = excluded.evaluation,
+            user_id = COALESCE(excluded.user_id, records.user_id)
         ''',
-        (rec_id, record_type, created, now, day, payload_json, meta_json, evaluation_json),
+        (rec_id, record_type, created, now, day, payload_json, meta_json, evaluation_json, owner_id),
     )
     _CONN.commit()
     cur = _CONN.execute('SELECT * FROM records WHERE id = ?', (rec_id,))
@@ -126,6 +202,7 @@ def save_questions_record(
     source_text: str = '',
     evaluation_results: Optional[Dict] = None, # 1. evaluation_results 파라미터 추가
     *,
+    user_id: Optional[str] = None,
     record_id: Optional[str] = None,
     created_at: Optional[str] = None,
     date: Optional[str] = None,
@@ -138,10 +215,36 @@ def save_questions_record(
         'questions',
         payload,
         meta=meta,
-        evaluation=evaluation_results, # 이 줄이 추가되었습니다.
+        evaluation=evaluation_results, 
+        user_id=user_id,
         record_id=record_id,
         created_at=created_at,
         date=date
+    )
+
+
+def save_level_test_record(
+    responses: List[Dict],
+    evaluation: Dict,
+    *,
+    meta: Optional[Dict] = None,
+    user_id: Optional[str] = None,
+    record_id: Optional[str] = None,
+) -> Dict:
+    payload = {"responses": responses}
+    default_meta = {
+        "title": f"Level Test 결과 ({evaluation.get('level', 'N/A')})",
+        "summary": evaluation.get("feedback", {}).get("summary"),
+        "topics": ["level_test"],
+    }
+    merged_meta = meta or default_meta
+    return save_record(
+        'level_test',
+        payload,
+        meta=merged_meta,
+        evaluation=evaluation,
+        user_id=user_id,
+        record_id=record_id,
     )
 
 
@@ -151,7 +254,9 @@ def save_discussion_record(
     meta: Optional[Dict] = None,
     source_text: str = '',
     *,
+    user_id: Optional[str] = None,
     record_id: Optional[str] = None,
+    evaluation: Optional[Dict] = None,
 ) -> Dict:
     payload = {
         'history': history,
@@ -165,17 +270,30 @@ def save_discussion_record(
             prev_source = existing.get('payload', {}).get('source_text')
             if prev_source:
                 payload['source_text'] = prev_source
-    return save_record('discussion', payload, meta=meta, record_id=record_id)
+    return save_record(
+        'discussion',
+        payload,
+        meta=meta,
+        evaluation=evaluation,
+        user_id=user_id,
+        record_id=record_id,
+    )
 
 
-def list_records(date: Optional[str] = None) -> List[Dict]:
+def list_records(date: Optional[str] = None, *, user_id: Optional[str] = None) -> List[Dict]:
+    base_query = 'SELECT id, type, created_at, updated_at, date, meta, user_id FROM records'
+    clauses = []
+    params = []
+    if user_id:
+        clauses.append('user_id = ?')
+        params.append(user_id)
     if date:
-        cur = _CONN.execute(
-            'SELECT id, type, created_at, updated_at, date, meta FROM records WHERE date = ? ORDER BY updated_at DESC',
-            (date,),
-        )
-    else:
-        cur = _CONN.execute('SELECT id, type, created_at, updated_at, date, meta FROM records ORDER BY updated_at DESC')
+        clauses.append('date = ?')
+        params.append(date)
+    if clauses:
+        base_query += ' WHERE ' + ' AND '.join(clauses)
+    base_query += ' ORDER BY updated_at DESC'
+    cur = _CONN.execute(base_query, tuple(params))
     rows = cur.fetchall()
     results: List[Dict] = []
     for row in rows:
@@ -188,6 +306,7 @@ def list_records(date: Optional[str] = None) -> List[Dict]:
             'date': row['date'],
             'meta': meta,
             'title': meta.get('title'),
+            'user_id': row['user_id'],
         })
     return results
 
@@ -198,6 +317,16 @@ def get_record(record_id: str) -> Optional[Dict]:
     if not row:
         return None
     return _row_to_record(row)
+
+
+def list_records_for_user(user_id: str, date: Optional[str] = None) -> List[Dict]:
+    return list_records(date=date, user_id=user_id)
+
+
+def delete_record_for_user(record_id: str, user_id: str) -> bool:
+    cur = _CONN.execute('DELETE FROM records WHERE id = ? AND user_id = ?', (record_id, user_id))
+    _CONN.commit()
+    return cur.rowcount > 0
 
 
 def _wrap_lines(text: str, width: int = 92) -> List[str]:
