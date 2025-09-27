@@ -618,4 +618,58 @@ function goStudyLog() {
     flex-direction: column;
   }
 }
+
+@media (max-width: 640px) {
+  .level-test {
+    padding: 20px 14px 40px;
+  }
+
+  .intro-inner {
+    padding: 24px 18px;
+  }
+
+  .question-head {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .question-card {
+    padding: 18px 16px;
+  }
+
+  .options {
+    gap: 0.4rem;
+  }
+
+  .option {
+    align-items: flex-start;
+  }
+
+  .option-id {
+    min-width: 20px;
+  }
+
+  .actions {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result {
+    gap: 1.5rem;
+  }
+
+  .skills ul {
+    gap: 0.75rem;
+  }
+
+  .level-responses {
+    padding: 1.1rem;
+  }
+}
 </style>

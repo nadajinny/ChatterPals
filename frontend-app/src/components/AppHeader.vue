@@ -5,27 +5,41 @@
         to="/"
         class="logo"
         aria-label="Chatterpals Home"
+        @click="closeNav"
       >
         <img src="../../public/logo.png" alt="Chatterpals 로고" class="logo-img" />
         <span class="logo-text">Chatterpals</span>
       </RouterLink>
-      <nav class="nav">
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/level-test">Level Test</RouterLink>
-        <RouterLink to="/aitutor">AI 튜터</RouterLink>
-        <RouterLink to="/studylog">Study Log</RouterLink>
-        <RouterLink to="/settings">Settings</RouterLink>
-        <RouterLink to="/mypage">My Page</RouterLink>
+
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-label="메뉴 열기"
+        @click="toggleNav"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <nav class="nav" :class="{ open: navOpen }">
+        <RouterLink to="/" @click="closeNav">Home</RouterLink>
+        <RouterLink to="/level-test" @click="closeNav">Level Test</RouterLink>
+        <RouterLink to="/aitutor" @click="closeNav">AI 튜터</RouterLink>
+        <RouterLink to="/studylog" @click="closeNav">Study Log</RouterLink>
+        <RouterLink to="/settings" @click="closeNav">Settings</RouterLink>
+        <RouterLink to="/mypage" @click="closeNav">My Page</RouterLink>
       </nav>
-      <div class="auth-actions" aria-live="polite">
+
+      <div class="auth-actions" aria-live="polite" :class="{ open: navOpen }">
         <template v-if="isAuthenticated">
           <span class="welcome">안녕하세요, {{ user?.nickname }}님</span>
           <button class="link-button" type="button" @click="goMyPage">마이페이지</button>
           <button class="primary" type="button" @click="logoutUser">로그아웃</button>
         </template>
         <template v-else>
-          <button class="link-button" type="button" @click="openLogin">로그인</button>
-          <button class="primary" type="button" @click="openSignup">회원가입</button>
+          <button class="link-button" type="button" @click="() => { closeNav(); openLogin() }">로그인</button>
+          <button class="primary" type="button" @click="() => { closeNav(); openSignup() }">회원가입</button>
         </template>
       </div>
     </div>
@@ -96,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
@@ -109,6 +123,7 @@ const loginForm = reactive({ username: '', password: '' })
 const signupForm = reactive({ username: '', nickname: '', password: '' })
 const authError = ref('')
 const authSuccess = ref('')
+const navOpen = ref(false)
 
 function resetForms() {
   authError.value = ''
@@ -140,11 +155,20 @@ function closeDialogs() {
   showSignup.value = false
 }
 
+function toggleNav() {
+  navOpen.value = !navOpen.value
+}
+
+function closeNav() {
+  navOpen.value = false
+}
+
 async function handleLogin() {
   authError.value = ''
   try {
     await login(loginForm.username, loginForm.password)
     closeDialogs()
+    closeNav()
     loginForm.username = ''
     loginForm.password = ''
     router.push('/mypage')
@@ -164,6 +188,7 @@ async function handleSignup() {
     signupForm.password = ''
     setTimeout(() => {
       closeDialogs()
+      closeNav()
       router.push('/mypage')
     }, 600)
   } catch (error) {
@@ -173,12 +198,21 @@ async function handleSignup() {
 
 function logoutUser() {
   logout()
+  closeNav()
   router.push('/')
 }
 
 function goMyPage() {
+  closeNav()
   router.push('/mypage')
 }
+
+watch(
+  () => router.currentRoute.value.fullPath,
+  () => {
+    closeNav()
+  },
+)
 </script>
 
 <style scoped>
@@ -193,7 +227,7 @@ function goMyPage() {
 }
 
 .container {
-  box-sizing: border-box; /* ✅ 폭 계산에 padding 포함 */
+  box-sizing: border-box;
   width: 100%;
   padding: 0.75rem clamp(16px, 4vw, 48px);
   display: flex;
@@ -201,8 +235,6 @@ function goMyPage() {
   gap: 1rem;
 }
 
-
-/* 로고 (이미지 + 텍스트) */
 .logo {
   display: flex;
   align-items: center;
@@ -212,8 +244,8 @@ function goMyPage() {
 }
 
 .logo-img {
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
@@ -225,182 +257,183 @@ function goMyPage() {
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
-/* 오른쪽에 메뉴 */
+
+.menu-toggle {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem;
+}
+
+.menu-toggle span {
+  width: 24px;
+  height: 2px;
+  background: #111827;
+}
+
 .nav {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: clamp(12px, 1.8vw, 24px);
 }
-.nav :is(a, .router-link-active) {
+
+.nav a {
   text-decoration: none;
-  color: #111827; /* gray-900 */
+  color: #111827;
   font-weight: 600;
 }
-.nav .router-link-active {
+
+.nav a.router-link-active {
   text-decoration: underline;
 }
 
 .auth-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-left: clamp(12px, 3vw, 36px);
+  gap: 1rem;
 }
 
 .welcome {
   font-weight: 600;
-  color: #2563eb;
+}
+
+/* 모달 기본 스타일은 기존과 동일 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 5vw, 32px);
+}
+
+.modal {
+  background: #fff;
+  min-width: min(400px, 90vw);
+  border-radius: 20px;
+  box-shadow: 0 32px 60px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.modal-body label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.modal-body input {
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+}
+
+.switch-message {
+  margin: 0;
+  text-align: center;
+}
+
+.primary {
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  padding: 0.6rem 1.25rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary.full {
+  width: 100%;
 }
 
 .link-button {
   background: none;
   border: none;
-  padding: 0;
-  font: inherit;
   color: #2563eb;
-  cursor: pointer;
-}
-
-.link-button:hover,
-.link-button:focus {
-  text-decoration: underline;
-}
-
-.primary {
-  border: none;
-  border-radius: 9999px;
-  background: linear-gradient(120deg, #6366f1, #14b8a6);
-  color: #fff;
   font-weight: 600;
-  padding: 0.4rem 1.1rem;
   cursor: pointer;
-  transition: transform 120ms ease;
-}
-
-.primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.primary:hover:not(:disabled),
-.primary:focus-visible:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.primary.full {
-  width: 100%;
-  margin-top: 1rem;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: clamp(16px, 4vw, 48px);
-  z-index: 2000;
-}
-
-.modal {
-  width: min(100%, 360px);
-  background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
-  padding: 1.8rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.45rem;
 }
 
 .icon-button {
-  width: 32px;
-  height: 32px;
+  background: none;
   border: none;
-  border-radius: 9999px;
-  background: #f3f4f6;
-  font-size: 1.25rem;
+  color: inherit;
+  font-size: 1.5rem;
   cursor: pointer;
-}
-
-.icon-button:hover {
-  background: #e5e7eb;
-}
-
-.modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.modal-body label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.modal-body input {
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.95rem;
 }
 
 .error {
   color: #dc2626;
-  font-size: 0.9rem;
   margin: 0;
 }
 
 .success {
-  color: #059669;
-  font-size: 0.9rem;
+  color: #16a34a;
   margin: 0;
 }
 
-.switch-message {
-  display: flex;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-  align-items: center;
-  justify-content: center;
-}
+@media (max-width: 820px) {
+  .container {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
 
-@media (prefers-color-scheme: dark) {
-  .app-header {
-    background: rgba(0, 0, 0, 0.55);
-    border-bottom-color: #2a2a2a;
+  .menu-toggle {
+    display: inline-flex;
+    margin-left: auto;
   }
-  .nav :is(a, .router-link-active) {
-    color: #e5e7eb; /* gray-200 */
+
+  .nav {
+    order: 3;
+    width: 100%;
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.3);
   }
-  .modal {
-    background: #111827;
-    color: #e5e7eb;
-    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.6);
+
+  .nav.open {
+    display: flex;
   }
-  .modal-body label {
-    color: #f3f4f6;
+
+  .auth-actions {
+    order: 2;
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
-  .modal-body input {
-    border-color: #374151;
-    background: #1f2937;
-    color: #f9fafb;
+
+  .auth-actions.open {
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    padding-top: 0.5rem;
+  }
+
+  .welcome {
+    flex-basis: 100%;
+    text-align: right;
   }
 }
 </style>

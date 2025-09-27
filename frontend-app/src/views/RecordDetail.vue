@@ -120,6 +120,12 @@ type QAItem = {
   }
 }
 
+type EvaluationRecordItem = {
+  question?: string
+  answer?: string
+  evaluation?: QAItem['evaluation']
+}
+
 type DiscussionEntry = {
   role: string
   content: string
@@ -134,10 +140,10 @@ const error = ref('')
 const qaItems = computed<QAItem[]>(() => {
   if (!record.value || record.value.type !== 'questions') return []
   const payload = (record.value.payload as { items?: QAItem[] }) || {}
-  const evaluations = (record.value.evaluation as { evaluations?: QAItem[] })?.evaluations || []
+  const evaluations = (record.value.evaluation as { evaluations?: EvaluationRecordItem[] })?.evaluations || []
   return (payload.items || []).map((item, index) => ({
     ...item,
-    evaluation: evaluations[index]?.evaluation || evaluations[index] || item.evaluation,
+    evaluation: evaluations[index]?.evaluation ?? item.evaluation,
   }))
 })
 

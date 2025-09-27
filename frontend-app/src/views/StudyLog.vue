@@ -124,16 +124,16 @@ const averageScores = computed(() => {
           buckets.questions.count += 1
         })
       } else if (record.type === 'discussion') {
-        let detail = record.evaluation
+        let detail: unknown = record.evaluation
         if (typeof detail === 'string') {
           try {
             detail = JSON.parse(detail)
           } catch (error) {
             console.warn('Failed to parse discussion evaluation', error)
-            detail = null
+            detail = undefined
           }
         }
-        const scores = (detail as { scores?: { grammar?: number; vocabulary?: number; clarity?: number } } | null)?.scores
+        const scores = (detail as { scores?: { grammar?: number; vocabulary?: number; clarity?: number } } | undefined)?.scores
         if (scores) {
           buckets.discussion.grammar += scores.grammar ?? 0
           buckets.discussion.vocabulary += scores.vocabulary ?? 0
