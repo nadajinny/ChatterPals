@@ -45,67 +45,71 @@
     </div>
 
     <!-- 로그인 모달 -->
-    <div
-      v-if="showLogin"
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      @click.self="closeDialogs"
-    >
-      <section class="modal">
-        <header class="modal-header">
-          <h2>로그인</h2>
-          <button class="icon-button" type="button" @click="closeDialogs" aria-label="닫기">×</button>
-        </header>
-        <form class="modal-body" @submit.prevent="handleLogin">
-          <label>
-            아이디(ID)
-            <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
-          </label>
-          <label>
-            비밀번호
-            <input v-model.trim="loginForm.password" type="password" autocomplete="current-password" required />
-          </label>
-          <p v-if="authError" class="error">{{ authError }}</p>
-          <button class="primary full" type="submit" :disabled="loading">{{ loading ? '로그인 중...' : '로그인' }}</button>
-          <p class="switch-message">계정이 없나요? <button type="button" class="link-button" @click="switchToSignup">회원가입</button></p>
-        </form>
-      </section>
-    </div>
+    <Teleport to="body">
+      <div
+        v-if="showLogin"
+        class="modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeDialogs"
+      >
+        <section class="modal">
+          <header class="modal-header">
+            <h2>로그인</h2>
+            <button class="icon-button" type="button" @click="closeDialogs" aria-label="닫기">×</button>
+          </header>
+          <form class="modal-body" @submit.prevent="handleLogin">
+            <label>
+              아이디(ID)
+              <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
+            </label>
+            <label>
+              비밀번호
+              <input v-model.trim="loginForm.password" type="password" autocomplete="current-password" required />
+            </label>
+            <p v-if="authError" class="error">{{ authError }}</p>
+            <button class="primary full" type="submit" :disabled="loading">{{ loading ? '로그인 중...' : '로그인' }}</button>
+            <p class="switch-message">계정이 없나요? <button type="button" class="link-button" @click="switchToSignup">회원가입</button></p>
+          </form>
+        </section>
+      </div>
+    </Teleport>
 
     <!-- 회원가입 모달 -->
-    <div
-      v-if="showSignup"
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      @click.self="closeDialogs"
-    >
-      <section class="modal">
-        <header class="modal-header">
-          <h2>회원가입</h2>
-          <button class="icon-button" type="button" @click="closeDialogs" aria-label="닫기">×</button>
-        </header>
-        <form class="modal-body" @submit.prevent="handleSignup">
-          <label>
-            아이디(ID)
-            <input v-model.trim="signupForm.username" type="text" autocomplete="username" required minlength="3" />
-          </label>
-          <label>
-            닉네임
-            <input v-model.trim="signupForm.nickname" type="text" required minlength="1" />
-          </label>
-          <label>
-            비밀번호
-            <input v-model.trim="signupForm.password" type="password" autocomplete="new-password" required minlength="6" />
-          </label>
-          <p v-if="authError" class="error">{{ authError }}</p>
-          <p v-if="authSuccess" class="success">{{ authSuccess }}</p>
-          <button class="primary full" type="submit" :disabled="loading">{{ loading ? '가입 중...' : '회원가입' }}</button>
-          <p class="switch-message">이미 계정이 있나요? <button type="button" class="link-button" @click="switchToLogin">로그인</button></p>
-        </form>
-      </section>
-    </div>
+    <Teleport to="body">
+      <div
+        v-if="showSignup"
+        class="modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeDialogs"
+      >
+        <section class="modal">
+          <header class="modal-header">
+            <h2>회원가입</h2>
+            <button class="icon-button" type="button" @click="closeDialogs" aria-label="닫기">×</button>
+          </header>
+          <form class="modal-body" @submit.prevent="handleSignup">
+            <label>
+              아이디(ID)
+              <input v-model.trim="signupForm.username" type="text" autocomplete="username" required minlength="3" />
+            </label>
+            <label>
+              닉네임
+              <input v-model.trim="signupForm.nickname" type="text" required minlength="1" />
+            </label>
+            <label>
+              비밀번호
+              <input v-model.trim="signupForm.password" type="password" autocomplete="new-password" required minlength="6" />
+            </label>
+            <p v-if="authError" class="error">{{ authError }}</p>
+            <p v-if="authSuccess" class="success">{{ authSuccess }}</p>
+            <button class="primary full" type="submit" :disabled="loading">{{ loading ? '가입 중...' : '회원가입' }}</button>
+            <p class="switch-message">이미 계정이 있나요? <button type="button" class="link-button" @click="switchToLogin">로그인</button></p>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </header>
 </template>
 
@@ -306,18 +310,23 @@ watch(
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.48);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   padding: clamp(16px, 5vw, 32px);
+  box-sizing: border-box;
+  overflow-y: auto;
+  z-index: 1100;
 }
 
 .modal {
   background: #fff;
-  min-width: min(400px, 90vw);
+  width: min(400px, 92vw);
   border-radius: 20px;
   box-shadow: 0 32px 60px rgba(15, 23, 42, 0.2);
   overflow: hidden;
+  max-height: min(90vh, 560px);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -333,6 +342,8 @@ watch(
   padding: 1.5rem;
   display: grid;
   gap: 1rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
 
 .modal-body label {
