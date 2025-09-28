@@ -248,8 +248,10 @@ function handleExternalUpdate() {
   }
 }
 
-function displayScore(value: number) {
-  if (!value || Number.isNaN(value)) return '-'
+function displayScore(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '-'
+  }
   return `${value.toFixed(1)} / 5`
 }
 </script>
