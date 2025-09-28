@@ -10,4 +10,21 @@ import AppHeader from '@/components/AppHeader.vue'
   </div>
 </template>
 
-<style scoped></style>
+<style>
+@font-face {
+  font-family: "BMDOHYEON";
+  src: url("../assets/fonts/BMDOHYEON_otf.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 전역 폰트 설정 */
+html, body {
+  font-family: "BMDOHYEON", "Noto Sans KR", sans-serif;
+  line-height: 1.6;
+  color: #111827;
+}
+</style>
+
+
