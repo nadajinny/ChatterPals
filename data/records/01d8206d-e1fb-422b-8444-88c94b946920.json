@@ -1,0 +1,72 @@
+{
+  "id": "01d8206d-e1fb-422b-8444-88c94b946920",
+  "type": "questions",
+  "created_at": "2025-09-20T15:39:32Z",
+  "date": "2025-09-20",
+  "payload": {
+    "items": [
+      {
+        "question": "How would you summarize the core issue around kt?",
+        "answer": "re"
+      },
+      {
+        "question": "What potential impacts could this have on people in 구독구?",
+        "answer": "re"
+      },
+      {
+        "question": "Which evidence in the text supports claims about 시간전?",
+        "answer": "re"
+      },
+      {
+        "question": "What are possible solutions or next steps regarding kt?",
+        "answer": "re"
+      },
+      {
+        "question": "What risks or uncertainties remain about kt and why?",
+        "answer": "er"
+      }
+    ]
+  },
+  "meta": {
+    "language_guess": "ko",
+    "entities": {
+      "proper_nouns": [
+        "kt",
+        "시간전",
+        "더보기",
+        "여성",
+        "사건",
+        "범행",
+        "닫기",
+        "기사"
+      ],
+      "locations": [
+        "구독구",
+        "요약봇도움말자동",
+        "재생하면",
+        "민관합동"
+      ]
+    },
+    "length": 162185,
+    "final_url": "https://n.news.naver.com/article/421/0008498196?cds=news_media_pc",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "encoding": "utf-8",
+    "extracted_chars": 9243,
+    "source_url": "https://n.news.naver.com/article/421/0008498196?cds=news_media_pc",
+    "title": "궁금증 커져가는 'KT무단결제 사건' 범행 수법…해외에선 이미",
+    "summary": "21일 경찰, 통신업계 등에 따르면 KT가 집계한 'KT무단결제 사건'의 피해자는 지난 18일 기준으로 362명이며 누적 피해 금액은 2억4000만 원으로 파악됐다. '깜깜이 펨토셀' 중 KT가 차지하는 비중은 89%로 가장 많다.",
+    "topics": [
+      "kt",
+      "시간전",
+      "더보기",
+      "여성",
+      "사건",
+      "범행",
+      "닫기",
+      "기사"
+    ],
+    "language": "ko",
+    "url": "https://n.news.naver.com/article/421/0008498196?cds=news_media_pc"
+  }
+}

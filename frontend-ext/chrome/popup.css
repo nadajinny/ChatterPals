@@ -143,6 +143,116 @@ button:disabled { color: #8c959f; cursor: not-allowed; background-color: #f6f8fa
     font-weight: 500;
 }
 
+/* --- 계정 섹션 --- */
+.account-section {
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.account-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.account-form .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.account-form input {
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-weight: 600;
+    padding: 6px 14px;
+}
+
+.btn-primary {
+    background: linear-gradient(120deg, #6366f1, #14b8a6);
+    color: #fff;
+    border: none;
+}
+
+.btn-outline {
+    border: 1px solid #d0d7de;
+    background: transparent;
+    color: #111827;
+}
+
+.btn-danger {
+    border: none;
+    background: #dc2626;
+    color: #fff;
+}
+
+.account-greeting {
+    margin: 0 0 12px;
+    font-weight: 600;
+}
+
+.hint {
+    font-size: 12px;
+    color: #586069;
+    min-height: 18px;
+}
+
+.chat-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+}
+
+.chat-limit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.chat-status {
+    margin: 6px 0;
+}
+
+.chat-actions {
+    justify-content: flex-end;
+}
+
+.discussion-eval {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f6f8fa;
+    border: 1px solid #d0d7de;
+    font-size: 13px;
+}
+
+.discussion-eval h5 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.discussion-eval .eval-scores {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
 /* --- 음성 UI 스타일 --- */
 .voice-result-container { padding: 10px; border-radius: 6px; background-color: #ffffff; border: 1px solid #d0d7de; }
 .voice-result-container p { margin: 8px 0; }
