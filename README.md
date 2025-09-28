@@ -62,6 +62,14 @@ API
   - 요청: `{ session_id: string, answer: string }`
   - 설명: 사용자 답변을 받고 다음 영어 질문 반환
 
+- POST `/chat/end`
+  - 요청: `{ session_id: string }`
+  - 설명: 진행 중인 토론을 조기 종료하고 마무리 멘트를 반환
+
+- POST `/chat/evaluate`
+  - 요청: `{ record_id: string }`
+  - 설명: 토론 기록을 토대로 문법/어휘/논리 점수와 피드백을 생성해 기록에 저장
+
 - POST `/records/questions`
   - 요청: `{ items: [{ question, answer }...], meta?: object, title?: string, url?: string, selection_text?: string, summary?: string, topics?: string[] }`
   - 설명: 확장 프로그램에서 작성한 질문·답변을 저장. 응답으로 `record_id`, `created_at` 반환
@@ -78,6 +86,20 @@ API
 - GET `/records/export.pdf?ids=<id1,id2,...>`
   - 설명: 여러 기록을 한 PDF로 합쳐 내려받기 (질문/답변 + 토론 기록을 함께 묶을 때 활용)
 
+사용자 계정 및 마이페이지
+- POST `/auth/signup`
+  - 요청: `{ username, nickname, password }`
+  - 설명: 새 계정을 만들고 즉시 액세스 토큰을 반환합니다.
+- POST `/auth/login`
+  - 요청: `application/x-www-form-urlencoded` 바디 (`username`, `password`)
+  - 설명: 로그인 후 `access_token`을 받습니다. 이후 `Authorization: Bearer <token>` 헤더를 사용합니다.
+- GET `/auth/me`
+  - 설명: 현재 로그인한 사용자 정보를 반환합니다. `PATCH /auth/me`로 닉네임을 수정할 수 있습니다.
+- GET `/me/records`
+  - 설명: 나의 학습 기록 목록(질문/토론)을 반환합니다. `GET /me/records/{record_id}`로 상세 조회가 가능합니다.
+- 질문/토론 저장 API (`/records/questions`, `/records/save_evaluation`, `/chat/start`) 호출 시 토큰을 포함하면 기록이 계정에 연결됩니다.
+- 웹 마이페이지에서는 최근 기록을 빠르게 살펴보고, `/records/{id}` 화면에서 질문·답변/토론 내역과 평가 결과를 자세히 확인할 수 있습니다.
+
 브라우저 확장(Chrome, MV3)
 - 위치: `ext/chrome`
 - 기능: 현재 탭의 선택 텍스트가 있으면 그것을, 없으면 현재 탭 URL을 로컬 서버로 전송
@@ -86,6 +108,7 @@ API
   - Save Answers: 질문별로 입력한 답변을 `/records/questions`에 저장(기록 ID 반환)
   - Discuss (EN): `/chat/start`로 토론 세션 시작 → 답변을 주고받으며 마지막에 자동으로 기록 저장
 - 서버 주소 입력란: 기본 `http://127.0.0.1:8008` (변경 가능, 동기 저장)
+- 확장에서 평가 결과나 토론 기록을 저장하려면 사이드바 상단의 로그인 섹션에서 계정 정보를 입력해 JWT 토큰을 발급받아야 합니다.
 
 설치 방법
 1) 크롬에서 개발자 모드 ON → 확장 프로그램 → 압축해제된 확장 프로그램을 로드

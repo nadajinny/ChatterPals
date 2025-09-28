@@ -1,133 +1,675 @@
 <template>
-  <section class="level-hero" aria-labelledby="level-title">
-    <div class="level-inner">
-      <h1 id="level-title">레벨테스트 시작하기 버튼</h1>
+  <main class="level-test" aria-live="polite">
+    <section v-if="stage === 'intro'" class="intro" aria-labelledby="level-test-title">
+      <div class="intro-inner">
+        <h1 id="level-test-title">영어 레벨 테스트</h1>
+        <p class="lead">
+          12개의 객관식 문항으로 문법 · 어휘 · 읽기 능력을 확인하고, CEFR 기준 레벨을 안내해 드립니다.
+          질문은 매번 무작위로 섞이며, 로그인 상태라면 결과가 자동 저장됩니다.
+        </p>
+        <ul class="steps">
+          <li>1. <strong>시작하기</strong> 버튼을 누르면 테스트 문항이 로드됩니다.</li>
+          <li>2. 모든 문항을 선택한 뒤 <strong>채점하기</strong>를 누르세요.</li>
+          <li>3. 총점과 영역별 분석, 추천 학습 방향을 확인합니다.</li>
+        </ul>
+        <button class="primary" type="button" @click="beginTest" :disabled="loading">
+          {{ loading ? '문항 불러오는 중…' : '테스트 시작하기' }}
+        </button>
+        <p v-if="error" class="error">{{ error }}</p>
+      </div>
+    </section>
 
-      <p class="subtitle">
-        밑에는 레벨테스트가 진행되는 과정과 테스트를 평가하는 방법, 테스트 진행 결과와 테스트 결과에 따라 취득한
-        배지에 대해서 각 섹션별로 설명함.
+    <section v-else-if="stage === 'test'" class="test" aria-labelledby="test-progress">
+      <header class="test-header">
+        <h2 id="test-progress">문항을 모두 선택해주세요</h2>
+        <p>
+          총 {{ questions.length }}문항 · 현재 {{ answeredCount }}개 선택
+        </p>
+        <button class="link" type="button" @click="cancelTest">← 돌아가기</button>
+      </header>
+      <p v-if="testMode === 'static'" class="mode-hint">
+        현재는 준비된 문제 은행에서 문항을 불러왔어요. 잠시 후 다시 시도하면 새 문항이 생성됩니다.
       </p>
 
-      <!-- 탭 메뉴 -->
-      <nav class="tabs" aria-label="카테고리">
-        <button class="tab active" type="button">ALL PRODUCTS</button>
-        <button class="tab" type="button">CATEGORY 1</button>
-        <button class="tab" type="button">CATEGORY 2</button>
-        <button class="tab" type="button">CATEGORY 3</button>
-        <button class="tab" type="button">CATEGORY 4</button>
-      </nav>
+      <form class="question-list" @submit.prevent="submitTest">
+        <article v-for="(question, index) in questions" :key="question.id" class="question-card">
+          <header class="question-head">
+            <span class="badge">{{ index + 1 }}</span>
+            <span class="skill">{{ translateSkill(question.skill) }}</span>
+            <span class="level">{{ question.level }}</span>
+          </header>
+          <p v-if="question.passage" class="passage">{{ question.passage }}</p>
+          <p class="prompt">{{ question.prompt }}</p>
+          <div class="options">
+            <label
+              v-for="option in question.options"
+              :key="option.id"
+              class="option"
+              :class="{ selected: selectedAnswers[question.id] === option.id }"
+            >
+              <input
+                type="radio"
+                :name="question.id"
+                :value="option.id"
+                v-model="selectedAnswers[question.id]"
+                required
+              />
+              <span class="option-id">{{ option.id }}.</span>
+              <span class="option-text">{{ option.text }}</span>
+            </label>
+          </div>
+        </article>
 
-      <!-- 시작 버튼 -->
-      <RouterLink to="/level-test/start" class="start-btn">레벨테스트 시작하기</RouterLink>
-    </div>
-  </section>
+        <footer class="actions">
+          <p class="hint" v-if="!allAnswered">
+            모든 문항에 답변해야 채점할 수 있습니다.
+          </p>
+          <button class="primary" type="submit" :disabled="submitting || !allAnswered">
+            {{ submitting ? '채점 중…' : '채점하기' }}
+          </button>
+        </footer>
+      </form>
+      <p v-if="error" class="error">{{ error }}</p>
+    </section>
+
+    <section v-else-if="stage === 'result'" class="result" aria-labelledby="result-title">
+      <header class="result-head">
+        <h2 id="result-title">나의 레벨: {{ evaluation?.level ?? '-' }}</h2>
+        <p class="score">{{ evaluation?.feedback?.score_text }}</p>
+        <p class="summary">{{ evaluation?.feedback?.summary }}</p>
+        <p v-if="evaluation?.feedback?.recommendation" class="recommend">
+          {{ evaluation?.feedback?.recommendation }}
+        </p>
+        <div class="overview">
+          <div>
+            <span class="number">{{ evaluation?.total_correct }}</span>
+            <span class="label">정답 수</span>
+          </div>
+          <div>
+            <span class="number">{{ evaluation?.percentage }}%</span>
+            <span class="label">정답률</span>
+          </div>
+        </div>
+        <div v-if="recordId" class="saved">
+          기록이 저장되었습니다 · ID: <code>{{ recordId.slice(0, 8) }}</code>
+        </div>
+      </header>
+
+      <section class="skills" v-if="skillEntries.length">
+        <h3>영역별 진단</h3>
+        <ul>
+          <li v-for="entry in skillEntries" :key="entry.skill">
+            <div class="skill-row">
+              <span class="skill-name">{{ translateSkill(entry.skill) }}</span>
+              <span class="skill-score">{{ entry.correct }} / {{ entry.total }} ({{ entry.percentage }}%)</span>
+            </div>
+            <div class="bar">
+              <div class="fill" :style="{ width: entry.percentage + '%' }"></div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="details" v-if="details.length">
+        <h3>문항 해설</h3>
+        <ol>
+          <li v-for="item in details" :key="item.id" :class="{ correct: item.is_correct, wrong: !item.is_correct }">
+            <header>
+              <span class="skill">{{ translateSkill(item.skill) }}</span>
+              <span class="result-tag">{{ item.is_correct ? '정답' : '오답' }}</span>
+            </header>
+            <p v-if="item.passage" class="passage">{{ item.passage }}</p>
+            <p class="prompt">{{ item.prompt }}</p>
+            <ul class="option-list" v-if="item.options?.length">
+              <li v-for="option in item.options" :key="option.id" :class="{
+                    chosen: option.id === item.selected,
+                    answer: option.id === item.correct,
+                  }">
+                <strong>{{ option.id }}.</strong> {{ option.text }}
+              </li>
+            </ul>
+            <p class="explain">정답: {{ item.correct }} · 나의 선택: {{ item.selected || '-' }}</p>
+            <p class="explain" v-if="item.explanation">{{ item.explanation }}</p>
+          </li>
+        </ol>
+      </section>
+
+      <footer class="result-actions">
+        <button class="secondary" type="button" @click="beginTest">다시 풀기</button>
+        <button class="link" type="button" @click="goStudyLog">Study Log로 이동</button>
+      </footer>
+    </section>
+  </main>
 </template>
 
 <script setup lang="ts">
-// 추후 실제 탭/시작 로직 연결 예정
+import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuth } from '@/composables/useAuth'
+import {
+  startLevelTest,
+  submitLevelTest,
+  type LevelTestQuestion,
+  type LevelTestEvaluation,
+  type LevelTestResponseItem,
+} from '@/services/levelTest'
+
+const router = useRouter()
+const { token, ensureLoaded } = useAuth()
+
+const stage = ref<'intro' | 'test' | 'result'>('intro')
+const loading = ref(false)
+const submitting = ref(false)
+const error = ref('')
+
+const questions = ref<LevelTestQuestion[]>([])
+const selectedAnswers = reactive<Record<string, string>>({})
+const evaluation = ref<LevelTestEvaluation | null>(null)
+const details = ref<LevelTestSubmitResponse['details']>([])
+const recordId = ref<string | null>(null)
+const sessionId = ref<string>('')
+const testMode = ref<'dynamic' | 'static'>('dynamic')
+
+type LevelTestSubmitResponse = Awaited<ReturnType<typeof submitLevelTest>>
+
+async function beginTest() {
+  error.value = ''
+  evaluation.value = null
+  details.value = []
+  recordId.value = null
+  stage.value = 'intro'
+  loading.value = true
+  sessionId.value = ''
+  try {
+    await ensureLoaded()
+    const data = await startLevelTest(12, 'dynamic')
+    sessionId.value = data.session_id
+    testMode.value = data.mode
+    questions.value = data.questions
+    Object.keys(selectedAnswers).forEach((key) => delete selectedAnswers[key])
+    questions.value.forEach((question) => {
+      selectedAnswers[question.id] = ''
+    })
+    stage.value = 'test'
+  } catch (err) {
+    console.error(err)
+    error.value = err instanceof Error ? err.message : '문항을 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
+  }
+}
+
+function cancelTest() {
+  stage.value = 'intro'
+  error.value = ''
+  sessionId.value = ''
+}
+
+const answeredCount = computed(() =>
+  questions.value.filter((question) => selectedAnswers[question.id]).length,
+)
+
+const allAnswered = computed(() => answeredCount.value === questions.value.length)
+
+async function submitTest() {
+  if (!allAnswered.value || submitting.value) return
+  submitting.value = true
+  error.value = ''
+  try {
+    const payload: LevelTestResponseItem[] = questions.value.map((question) => ({
+      question_id: question.id,
+      answer: selectedAnswers[question.id],
+    }))
+    const response = await submitLevelTest(payload, token.value ?? undefined, sessionId.value || undefined)
+    evaluation.value = response.evaluation
+    details.value = response.details
+    recordId.value = response.record_id ?? null
+    stage.value = 'result'
+    sessionId.value = ''
+  } catch (err) {
+    console.error(err)
+    error.value = err instanceof Error ? err.message : '채점 중 오류가 발생했습니다.'
+  } finally {
+    submitting.value = false
+  }
+}
+
+const skillEntries = computed(() => {
+  if (!evaluation.value) return []
+  return Object.entries(evaluation.value.skill_breakdown).map(([skill, stat]) => ({
+    skill,
+    correct: stat.correct,
+    total: stat.total,
+    percentage: stat.percentage,
+  }))
+})
+
+function translateSkill(skill: string) {
+  if (skill === 'grammar') return '문법'
+  if (skill === 'vocabulary') return '어휘'
+  if (skill === 'reading') return '읽기'
+  return skill
+}
+
+function goStudyLog() {
+  router.push('/studylog')
+}
 </script>
 
 <style scoped>
-/* 시원한 상단 히어로 영역 (풀-와이드) */
-.level-hero {
-
-  min-height: 100vh; /* ✅ 브라우저 전체 높이 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, #f7b980 0%, #f7cda6 40%, #fbe5cf 100%);
-
+.level-test {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f6f7ff 0%, #ffffff 60%);
+  padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 56px);
 }
 
-/* 내부 컨텐츠 래퍼: 너무 넓지 않게 중앙에 모으되, 꽉 막지 않음 */
-.level-inner {
-  max-width: 1200px;
+.intro {
+  max-width: 880px;
   margin: 0 auto;
   text-align: center;
 }
 
-/* 타이틀: 크게, 굵게 */
-.level-inner h1 {
+.intro-inner {
+  background: #ffffff;
+  padding: clamp(24px, 4vw, 48px);
+  border-radius: 24px;
+  box-shadow: 0 28px 65px rgba(79, 70, 229, 0.14);
+}
+
+.intro h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2.2rem, 1.5rem + 2.8vw, 3.6rem);
   font-weight: 800;
-  line-height: 1.15;
-  /* 큰 화면에서 자연스럽게 커지는 반응형 폰트 */
-  font-size: clamp(2rem, 1.2rem + 3vw, 4rem);
-  color: #1f2937; /* gray-800 */
-  margin: 0 0 0.9rem;
+  color: #1f2937;
 }
 
-/* 서브타이틀: 가독성 좋은 중간 톤 */
-.subtitle {
-  color: #374151; /* gray-700 */
-  font-size: clamp(1rem, 0.9rem + 0.6vw, 1.25rem);
-  max-width: 1000px;
-  margin: 0 auto clamp(18px, 2.2vw, 28px);
+.lead {
+  color: #4b5563;
+  font-size: 1.1rem;
+  line-height: 1.7;
+  margin-bottom: 1.5rem;
 }
 
-/* 탭 메뉴 */
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: clamp(8px, 1.2vw, 18px);
-  justify-content: center;
+.steps {
+  text-align: left;
+  list-style: decimal;
+  padding-left: 1.4rem;
+  color: #374151;
+  margin-bottom: 2rem;
+}
+
+.primary {
+  display: inline-flex;
   align-items: center;
-  margin: 0 auto clamp(22px, 2.5vw, 36px);
-}
-
-.tab {
-  appearance: none;
-  background: transparent;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 700;
   border: none;
-  letter-spacing: 0.06em;
-  font-weight: 800;
-  font-size: clamp(0.85rem, 0.7rem + 0.4vw, 1rem);
-  color: #6b7280; /* gray-500 */
-  padding: 6px 2px;
   cursor: pointer;
 }
-.tab.active {
-  color: #374151; /* gray-700 */
-  position: relative;
-}
-.tab.active::after {
-  content: "";
-  display: block;
-  height: 2px;
-  border-radius: 2px;
-  background: #374151;
-  margin: 6px auto 0;
-  width: 100%;
+
+.primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
-/* 시작 버튼 */
-.start-btn {
-  display: inline-block;
-  margin-top: clamp(8px, 1.2vw, 16px);
-  padding: clamp(12px, 1.2vw, 14px) clamp(18px, 2.2vw, 24px);
+.error {
+  margin-top: 1rem;
+  color: #dc2626;
+}
+
+.test {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.test-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.test-header h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 1.1rem + 1.1vw, 2rem);
+}
+
+.link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mode-hint {
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.3);
   border-radius: 12px;
-  text-decoration: none;
-  background: #111827; /* gray-900 */
-  color: #fff;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  transition: transform 0.06s ease, opacity 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.15);
-}
-.start-btn:hover {
-  opacity: 0.95;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.18);
-}
-.start-btn:active {
-  transform: translateY(1px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: #0f172a;
 }
 
-/* 다크 모드 대비 */
-@media (prefers-color-scheme: dark) {
-  .level-inner h1 { color: #e5e7eb; }       /* gray-200 */
-  .subtitle { color: #d1d5db; }             /* gray-300 */
-  .tab { color: #a1a1aa; }                  /* zinc-400 */
-  .tab.active { color: #e5e7eb; }
-  .tab.active::after { background: #e5e7eb; }
-  .start-btn { background: #e5e7eb; color: #111827; }
+.question-list {
+  display: grid;
+  gap: clamp(16px, 2.4vw, 24px);
+}
+
+.question-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(79, 70, 229, 0.1);
+}
+
+.question-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #4f46e5;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.skill {
+  font-weight: 600;
+  color: #4338ca;
+}
+
+.level {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.passage {
+  background: rgba(79, 70, 229, 0.06);
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.prompt {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.options {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  cursor: pointer;
+}
+
+.option:hover {
+  border-color: #4f46e5;
+}
+
+.option.selected {
+  border-color: #4f46e5;
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.option input {
+  margin: 0;
+}
+
+.option-id {
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.hint {
+  color: #6b7280;
+}
+
+.result {
+  max-width: 960px;
+  margin: 0 auto;
+  display: grid;
+  gap: 2rem;
+}
+
+.result-head {
+  background: #111827;
+  border-radius: 24px;
+  padding: clamp(24px, 3vw, 40px);
+  color: #fff;
+  box-shadow: 0 32px 70px rgba(15, 23, 42, 0.3);
+}
+
+.result-head h2 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 1.5rem + 1.8vw, 3rem);
+}
+
+.score {
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+}
+
+.summary, .recommend {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+}
+
+.overview {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.overview .number {
+  display: block;
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.overview .label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.saved {
+  margin-top: 1.5rem;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.skills ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.skill-row {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(79, 70, 229, 0.15);
+  overflow: hidden;
+}
+
+.bar .fill {
+  height: 100%;
+  background: #4f46e5;
+  border-radius: inherit;
+}
+
+.details ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1.2rem;
+}
+
+.details li {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 18px;
+  padding: 1.25rem;
+  background: #fff;
+}
+
+.details li.correct {
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.details li.wrong {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.result-tag {
+  margin-left: auto;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.details li.wrong .result-tag {
+  color: #dc2626;
+}
+
+.option-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.option-list li {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.option-list li.answer {
+  font-weight: 700;
+}
+
+.option-list li.chosen:not(.answer) {
+  color: #dc2626;
+}
+
+.explain {
+  margin: 0.3rem 0;
+  color: #4b5563;
+}
+
+.result-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.secondary {
+  background: none;
+  border: 1px solid #4f46e5;
+  color: #4f46e5;
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .overview {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .result-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .level-test {
+    padding: 20px 14px 40px;
+  }
+
+  .intro-inner {
+    padding: 24px 18px;
+  }
+
+  .question-head {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .question-card {
+    padding: 18px 16px;
+  }
+
+  .options {
+    gap: 0.4rem;
+  }
+
+  .option {
+    align-items: flex-start;
+  }
+
+  .option-id {
+    min-width: 20px;
+  }
+
+  .actions {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result {
+    gap: 1.5rem;
+  }
+
+  .skills ul {
+    gap: 0.75rem;
+  }
+
+  .level-responses {
+    padding: 1.1rem;
+  }
 }
 </style>
