@@ -47,6 +47,12 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
         if not summary:
              raise ValueError("1단계 요약 생성에 실패했습니다.")
 
+        if max_questions <= 0:
+            return {
+                "summary": summary,
+                "topics": keywords,
+                "questions": [],
+            }
 
         # --- 2단계: "질문 생성가" AI ---
         question_generator_model = genai.GenerativeModel('gemini-2.0-flash-lite-preview')
@@ -73,12 +79,24 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
         
         questions_response = question_generator_model.generate_content(question_generator_prompt)
         cleaned_json_str = questions_response.text.strip().replace('```json', '').replace('```', '').strip()
-        questions = json.loads(cleaned_json_str)
+        raw_questions = json.loads(cleaned_json_str)
+
+        if isinstance(raw_questions, dict):
+            questions_list = raw_questions.get("questions") or raw_questions.get("items") or []
+        elif isinstance(raw_questions, list):
+            questions_list = raw_questions
+        else:
+            questions_list = []
+
+        if max_questions > 0:
+            questions_list = questions_list[:max_questions]
+        else:
+            questions_list = []
 
         return {
             "summary": summary,
             "topics": keywords, # 기존 'topics' 키에 키워드를 할당
-            "questions": questions,
+            "questions": questions_list,
         }
 
     except Exception as e:
@@ -90,10 +108,11 @@ def analyze(text: str, max_questions: int = 5) -> Dict[str, Any]:
             response = model.generate_content(prompt)
             # 간단한 텍스트 분리
             questions = [q.strip() for q in response.text.split('\n') if q.strip()]
+            trimmed = questions[:max(0, max_questions)] if max_questions else []
             return {
                 "summary": text[:200] + "...",
                 "topics": [],
-                "questions": questions,
+                "questions": trimmed,
             }
         except Exception as fallback_e:
             print(f"Fallback 분석 중 오류 발생: {fallback_e}")

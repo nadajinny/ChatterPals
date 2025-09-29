@@ -29,6 +29,16 @@ body {
     line-height: 1.5;
     border: 1px solid #d0d7de;
 }
+.inline-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.inline-control select {
+    padding: 4px 8px;
+}
 
 /* --- 헤더 및 닫기 버튼 스타일 --- */
 .header-actions {
@@ -87,8 +97,13 @@ button:disabled { color: #8c959f; cursor: not-allowed; background-color: #f6f8fa
     border: 1px solid #d0d7de;
     border-radius: 6px;
     background-color: #fff;
+    word-break: break-word;
 }
-.question-text { font-weight: 500; margin-bottom: 8px; }
+.question-text {
+    font-weight: 500;
+    margin-bottom: 8px;
+    word-break: break-word;
+}
 .question-answer {
     width: 100%;
     border-radius: 6px;
@@ -132,6 +147,7 @@ button:disabled { color: #8c959f; cursor: not-allowed; background-color: #f6f8fa
     font-size: 14px;
     line-height: 1.6;
     margin-bottom: 10px;
+    word-break: break-word;
 }
 .topics-box { display: flex; flex-wrap: wrap; gap: 6px; }
 .topic-tag {
@@ -141,6 +157,27 @@ button:disabled { color: #8c959f; cursor: not-allowed; background-color: #f6f8fa
     border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    padding: 10px 16px;
+    background: rgba(17, 24, 39, 0.9);
+    color: #f9fafb;
+    border-radius: 999px;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.25);
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 2000;
+}
+
+.toast.show {
+    opacity: 1;
 }
 
 /* --- 계정 섹션 --- */

@@ -2,7 +2,7 @@ import os
 import traceback
 import json #
 import ast
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,7 +65,7 @@ app.add_middleware(
 # --- Pydantic 데이터 모델 정의 ---
 class QuestionsRequest(BaseModel):
     text: Optional[str] = None
-    max_questions: int = Field(5, ge=1, le=20)
+    max_questions: int = Field(5, ge=0, le=20)
 
 class QuestionAnswerItem(BaseModel):
     question: str
@@ -93,7 +93,7 @@ class EvaluationResult(BaseModel):
 class EvaluatedItem(BaseModel):
     question: str
     answer: str
-    evaluation: EvaluationResult
+    evaluation: Dict[str, Any]
 
 class SaveEvaluationRequest(BaseModel):
     summary: str
@@ -204,6 +204,17 @@ async def get_my_records(
 ):
     records = list_records_for_user(current_user["id"], date=date)
     return {"records": records}
+
+
+@app.get("/me/records/{record_id}.pdf")
+async def get_my_record_pdf(record_id: str, current_user: dict = Depends(get_current_user)):
+    record = get_record(record_id)
+    if not record or record.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Record not found")
+    pdf_bytes = record_to_pdf(record)
+    filename = (record.get("title") or "record").replace(" ", "_")
+    disposition = f"attachment; filename=\"{filename}-{record_id[:8]}.pdf\""
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": disposition})
 
 
 @app.get("/me/records/{record_id}")

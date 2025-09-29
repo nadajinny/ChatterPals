@@ -97,6 +97,13 @@
         <h2>분석한 원문</h2>
         <p class="source">{{ sourceText }}</p>
       </section>
+
+      <div class="export-actions" v-if="record">
+        <button class="export-btn" type="button" @click="exportPdf" :disabled="exporting">
+          {{ exporting ? 'PDF 내보내는 중...' : '📄 PDF로 내보내기' }}
+        </button>
+        <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
+      </div>
     </section>
   </main>
 </template>
@@ -136,6 +143,10 @@ const { token, ensureLoaded, isAuthenticated } = useAuth()
 const record = ref<MyRecord | null>(null)
 const loading = ref(false)
 const error = ref('')
+const exportStatus = ref('')
+const exporting = ref(false)
+
+const TEXT_API_BASE = import.meta.env.VITE_TEXT_API_BASE ?? 'http://127.0.0.1:8008'
 
 const qaItems = computed<QAItem[]>(() => {
   if (!record.value || record.value.type !== 'questions') return []
@@ -255,6 +266,45 @@ function displayScore(value?: number) {
   return `${value}/5`
 }
 
+async function exportPdf() {
+  exportStatus.value = ''
+  if (!record.value) {
+    exportStatus.value = '내보낼 기록이 없습니다.'
+    return
+  }
+  if (!token.value) {
+    exportStatus.value = '로그인 후 이용해주세요.'
+    return
+  }
+  exporting.value = true
+  try {
+    const response = await fetch(`${TEXT_API_BASE}/me/records/${record.value.id}.pdf`, {
+      headers: {
+        Authorization: `Bearer ${token.value}`,
+      },
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}))
+      throw new Error(detail?.detail ?? 'PDF를 생성하지 못했습니다.')
+    }
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const safeTitle = (record.value.title || 'record').replace(/[^a-zA-Z0-9-_\.]/g, '_')
+    link.href = blobUrl
+    link.download = `${safeTitle}-${record.value.id.slice(0, 8)}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(blobUrl)
+    exportStatus.value = 'PDF로 내보냈습니다.'
+  } catch (err) {
+    exportStatus.value = err instanceof Error ? err.message : 'PDF 내보내기에 실패했습니다.'
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(async () => {
   await ensureLoaded()
   if (!isAuthenticated.value) {
@@ -269,6 +319,10 @@ watch(() => route.params.id, (id) => {
   if (typeof id === 'string') {
     loadRecord(id)
   }
+})
+
+watch(record, () => {
+  exportStatus.value = ''
 })
 </script>
 
@@ -535,6 +589,35 @@ watch(() => route.params.id, (id) => {
 .level-responses .explain {
   margin: 0.3rem 0;
   color: #d1d5db;
+}
+
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.export-btn {
+  border: none;
+  background: linear-gradient(135deg, #4f46e5, #0ea5e9);
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.export-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.export-status {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #cbd5f5;
 }
 
 .source {

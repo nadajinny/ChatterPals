@@ -329,7 +329,7 @@ def delete_record_for_user(record_id: str, user_id: str) -> bool:
     return cur.rowcount > 0
 
 
-def _wrap_lines(text: str, width: int = 92) -> List[str]:
+def _wrap_lines(text: str, width: int = 40) -> List[str]:
     import textwrap
 
     wrapper = textwrap.TextWrapper(width=width, expand_tabs=False, replace_whitespace=False, drop_whitespace=False)
@@ -347,60 +347,109 @@ def _wrap_lines(text: str, width: int = 92) -> List[str]:
 
 
 def _record_to_lines(record: Dict) -> List[str]:
+    def _translate_type(type_name: str) -> str:
+        mapping = {
+            'questions': '질문·답변',
+            'discussion': '토론',
+            'level_test': '레벨 테스트',
+        }
+        return mapping.get(type_name, type_name)
+
     lines: List[str] = []
     meta = record.get('meta') or {}
     payload = record.get('payload') or {}
+    eval_raw = record.get('evaluation')
+    if isinstance(eval_raw, str):
+        try:
+            eval_raw = json.loads(eval_raw)
+        except json.JSONDecodeError:
+            eval_raw = None
 
-    lines.append(f"Record ID: {record.get('id')}")
-    lines.append(f"Created At (UTC): {record.get('created_at')}")
-    lines.append(f"Updated At (UTC): {record.get('updated_at')}")
-    lines.append(f"Date: {record.get('date')}")
-    lines.append(f"Type: {record.get('type')}")
+    lines.append(f"학습 ID: {record.get('id')}")
+    lines.append(f"학습 시간 : {record.get('created_at')}")
+    lines.append(f"마지막 수정 : {record.get('updated_at')}")
+    if record.get('date'):
+        lines.append(f"학습 일자: {record.get('date')}")
+    lines.append(f"학습 유형: {_translate_type(record.get('type') or '')}")
 
     if meta.get('title'):
-        lines.append(f"Title: {meta.get('title')}")
+        lines.append(f"제목: {meta.get('title')}")
     if meta.get('url'):
-        lines.append(f"Source URL: {meta.get('url')}")
+        lines.append(f"출처 URL: {meta.get('url')}")
     if meta.get('language'):
-        lines.append(f"Language: {meta.get('language')}")
-    if meta.get('summary'):
-        lines.append('Summary:')
-        lines.extend(_wrap_lines(meta.get('summary')))
-    if meta.get('topics'):
-        topics = meta.get('topics')
-        if isinstance(topics, list) and topics:
-            lines.append('Topics: ' + ', '.join(map(str, topics)))
+        lines.append(f"언어: {meta.get('language')}")
+
+    summary_text = meta.get('summary') or ''
+    if not summary_text and record.get('type') == 'discussion':
+        summary_text = payload.get('summary') or ''
+    if summary_text:
+        lines.append('')
+        lines.append('요약:')
+        lines.extend(_wrap_lines(summary_text, width=40))
+
+    topics = meta.get('topics') or []
+    if isinstance(topics, list) and topics:
+        lines.append('키워드: ' + ', '.join(map(str, topics)))
 
     lines.append('')
+    lines.append('학습 내용:')
 
     if record.get('type') == 'questions':
-        lines.append('Questions & Answers:')
+        evaluations = []
+        if isinstance(eval_raw, dict):
+            evaluations = eval_raw.get('evaluations') or []
         for idx, item in enumerate(payload.get('items', []), start=1):
             q = item.get('question') or ''
             a = item.get('answer') or ''
-            lines.extend(_wrap_lines(f"{idx}. {q}"))
-            if a:
-                lines.extend(_wrap_lines(f"   Answer: {a}"))
-            else:
-                lines.append('   Answer: (empty)')
+            lines.extend(_wrap_lines(f"{idx}. 질문: {q}", width=40))
+            answer_line = a if a else '(답변 없음)'
+            lines.extend(_wrap_lines(f"   답변: {answer_line}", width=40))
+            if evaluations and len(evaluations) >= idx:
+                item_eval = evaluations[idx - 1] or {}
+                eval_body = item_eval.get('evaluation') or item_eval
+                scores = (eval_body or {}).get('scores') or {}
+                feedback = (eval_body or {}).get('feedback')
+                score_text = ' / '.join([
+                    f"문법 {scores.get('grammar', 0)}",
+                    f"어휘 {scores.get('vocabulary', 0)}",
+                    f"논리 {scores.get('clarity', 0)}",
+                ])
+                lines.extend(_wrap_lines(f"   평가: {score_text}", width=40))
+                if feedback:
+                    lines.extend(_wrap_lines(f"   피드백: {feedback}", width=40))
             lines.append('')
         if payload.get('source_text'):
-            lines.append('Source Text Snippet:')
-            lines.extend(_wrap_lines(payload.get('source_text')))
+            lines.append('원문 발췌:')
+            lines.extend(_wrap_lines(payload.get('source_text'), width=40))
     elif record.get('type') == 'discussion':
-        lines.append('Discussion History:')
+        if isinstance(eval_raw, dict):
+            scores = eval_raw.get('scores') or {}
+            feedback = eval_raw.get('feedback')
+            lines.append('평가 요약:')
+            score_text = ' / '.join([
+                f"문법 {scores.get('grammar', 0)}",
+                f"어휘 {scores.get('vocabulary', 0)}",
+                f"논리 {scores.get('clarity', 0)}",
+            ])
+            lines.extend(_wrap_lines(f"   점수: {score_text}", width=40))
+            if feedback:
+                lines.extend(_wrap_lines(f"   피드백: {feedback}", width=40))
+            lines.append('')
+        lines.append('대화 기록:')
         for entry in payload.get('history', []):
             role = (entry.get('role') or 'unknown').upper()
             content = entry.get('content') or ''
-            lines.extend(_wrap_lines(f"{role}: {content}"))
+            lines.extend(_wrap_lines(f"{role}: {content}", width=40))
             lines.append('')
         if payload.get('initial_questions'):
-            lines.append('Initial Questions:')
+            lines.append('초기 질문:')
             for idx, question in enumerate(payload.get('initial_questions', []), start=1):
-                lines.extend(_wrap_lines(f"{idx}. {question}"))
+                lines.extend(_wrap_lines(f"{idx}. {question}", width=40))
     else:
         lines.append(json.dumps(payload, ensure_ascii=False, indent=2))
 
+    if lines and lines[-1] != '':
+        lines.append('')
     return lines
 
 
