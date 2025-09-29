@@ -50,24 +50,27 @@ function initializeSidebar() {
     const questionBtn = document.getElementById('question');
     const analyzeAllBtn = document.getElementById('analyzeAll');
     const questionCountSelect = document.getElementById('question-count-select');
+    const chatQuestionLimitSelect = document.getElementById('chat-question-limit');
+    const analysisChoice = document.getElementById('analysis-choice');
+    const questionFlowBtn = document.getElementById('start-question-flow');
+    const chatStartBtn = document.getElementById('chatStart');
     const resultDiv = document.getElementById('result');
     const questionsDiv = document.getElementById('questions');
     const actionButtons = document.getElementById('action-buttons');
     const evaluateBtn = document.getElementById('evaluateBtn');
     const saveBtn = document.getElementById('saveBtn');
-    const chatStartBtn = document.getElementById('chatStart');
     const chatDiv = document.getElementById('chat');
     const sidSpan = document.getElementById('sid');
     const qSpan = document.getElementById('q');
     const answerInput = document.getElementById('answer');
     const sendBtn = document.getElementById('send');
-    const chatQuestionLimitSelect = document.getElementById('chat-question-limit');
     const chatEndBtn = document.getElementById('chatEnd');
     const chatEvaluationBox = document.getElementById('chat-evaluation');
     const chatGrammarScore = document.getElementById('chat-grammar-score');
     const chatVocabScore = document.getElementById('chat-vocab-score');
     const chatClarityScore = document.getElementById('chat-clarity-score');
     const chatFeedback = document.getElementById('chat-feedback');
+    const chatLimitDisplay = document.getElementById('chat-limit-display');
     const recordBtn = document.getElementById('recordBtn');
     const voiceStatus = document.getElementById('voiceStatus');
     const userTranscript = document.getElementById('userTranscript');
@@ -81,6 +84,7 @@ function initializeSidebar() {
     const accountSignedIn = document.getElementById('account-signed-in');
     const accountNickname = document.getElementById('account-nickname');
     const logoutBtn = document.getElementById('logoutBtn');
+    const toastEl = document.getElementById('toast');
 
     // --- 서버 주소 설정 ---
     const TEXT_API_SERVER = 'http://127.0.0.1:8008';
@@ -98,11 +102,12 @@ function initializeSidebar() {
     let authToken = null;
     let authUser = null;
     let chatActive = false;
+    let toastTimeoutId = null;
 
     chrome.storage.local.get('contextDataForSidebar', (result) => {
         if (result.contextDataForSidebar && result.contextDataForSidebar.text) {
-            lastAnalyzedText = result.contextDataForSidebar.text;
-            generateQuestions(lastAnalyzedText);
+            lastAnalyzedText = result.contextDataForSidebar.text.trim();
+            analyzeTextForSummary(lastAnalyzedText);
             chrome.storage.local.remove('contextDataForSidebar');
         }
     });
@@ -110,6 +115,9 @@ function initializeSidebar() {
     // --- 이벤트 리스너 ---
     questionBtn.addEventListener('click', () => handlePageTextRequest('selection'));
     analyzeAllBtn.addEventListener('click', () => handlePageTextRequest('fullPage'));
+    if (questionFlowBtn) {
+        questionFlowBtn.addEventListener('click', () => generateQuestions(lastAnalyzedText));
+    }
     evaluateBtn.addEventListener('click', handleEvaluation);
     saveBtn.addEventListener('click', handleSaveEvaluation);
     chatStartBtn.addEventListener('click', startChatSession);
@@ -146,22 +154,60 @@ function initializeSidebar() {
         resultDiv.textContent = message;
         chrome.runtime.sendMessage({ action: 'getTextFromPage', type }, (response) => {
             if (response && response.text && response.text.trim()) {
-                lastAnalyzedText = response.text;
-                generateQuestions(response.text);
+                lastAnalyzedText = response.text.trim();
+                analyzeTextForSummary(lastAnalyzedText);
             } else {
                 resultDiv.textContent = '분석할 텍스트가 없습니다.';
             }
         });
     }
 
-    async function generateQuestions(text) {
-        resultDiv.textContent = 'AI 분석 중...';
+    async function analyzeTextForSummary(text) {
+        lastAnalysisResult = null;
+        lastEvaluationResult = null;
+        questionsDiv.innerHTML = '';
+        actionButtons.style.display = 'none';
+        analysisChoice.style.display = 'none';
+        chatDiv.style.display = 'none';
+        chatEvaluationBox.style.display = 'none';
+        chatActive = false;
+        sidSpan.textContent = '-';
+        qSpan.textContent = '(없음)';
         summaryView.style.display = 'none';
+        resultDiv.textContent = 'AI가 텍스트를 분석 중입니다...';
+
+        try {
+            const response = await fetch(`${TEXT_API_SERVER}/questions`, {
+                method: 'POST',
+                headers: buildHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ text, max_questions: 0 }),
+            });
+            if (!response.ok) throw new Error(`서버 오류: ${response.status}`);
+            const data = await response.json();
+            lastAnalysisResult = data;
+            summaryDiv.textContent = data.summary;
+            topicsDiv.innerHTML = (data.topics || []).map(topic => `<span class="topic-tag">${topic}</span>`).join('');
+            summaryView.style.display = 'block';
+            resultDiv.textContent = '요약이 준비되었습니다. 질문 생성 또는 토론 시작을 선택하세요.';
+            analysisChoice.style.display = 'flex';
+        } catch (error) {
+            resultDiv.textContent = '텍스트 분석 서버에 연결할 수 없습니다.';
+            console.error('요약 분석 실패:', error);
+        }
+    }
+
+    async function generateQuestions(text) {
+        if (!text || !text.trim()) {
+            resultDiv.textContent = '먼저 텍스트를 분석해주세요.';
+            return;
+        }
+        resultDiv.textContent = 'AI가 질문을 만들고 있습니다...';
         questionsDiv.innerHTML = '';
         actionButtons.style.display = 'none';
         evaluateBtn.disabled = true;
         saveBtn.disabled = true;
         lastEvaluationResult = null;
+        analysisChoice.style.display = 'none';
 
         const questionCount = parseInt(questionCountSelect.value, 10);
 
@@ -179,7 +225,7 @@ function initializeSidebar() {
             topicsDiv.innerHTML = (data.topics || []).map(topic => `<span class="topic-tag">${topic}</span>`).join('');
             summaryView.style.display = 'block';
 
-            resultDiv.textContent = `질문 ${data.questions.length}개 생성 완료. 답변을 입력하고 평가받으세요.`;
+            resultDiv.textContent = `질문 ${data.questions.length}개를 생성했습니다. 답변을 입력하고 평가받으세요.`;
             questionsDiv.innerHTML = (data.questions || []).map((q, index) => {
                 const questionText = typeof q === 'object' ? q.question : q;
                 return `
@@ -197,12 +243,13 @@ function initializeSidebar() {
                     </div>
                 </div>`;
             }).join('');
-            
+
             actionButtons.style.display = 'flex';
             evaluateBtn.disabled = false;
         } catch (error) {
-            resultDiv.textContent = '텍스트 분석 서버에 연결할 수 없습니다.';
+            resultDiv.textContent = '질문 생성에 실패했습니다. 다시 시도해 주세요.';
             console.error('질문 생성 API 호출 실패:', error);
+            analysisChoice.style.display = 'flex';
         }
     }
 
@@ -323,6 +370,7 @@ function initializeSidebar() {
             sidSpan.textContent = currentSessionId.substring(0, 8);
             qSpan.textContent = data.question;
             chatDiv.style.display = 'block';
+            chatLimitDisplay.textContent = chatQuestionLimitSelect.value;
             resultDiv.textContent = '채팅이 시작되었습니다.';
             chatActive = true;
             chatEndBtn.style.display = 'inline-flex';
@@ -333,6 +381,7 @@ function initializeSidebar() {
         } catch (error) {
             resultDiv.textContent = `오류: ${error.message}`;
             console.error('채팅 시작 API 호출 실패:', error);
+            analysisChoice.style.display = 'flex';
         }
     }
 
@@ -542,6 +591,18 @@ function initializeSidebar() {
             headers.Authorization = `Bearer ${authToken}`;
         }
         return headers;
+    }
+
+    function showToast(message) {
+        if (!toastEl) return;
+        toastEl.textContent = message;
+        toastEl.classList.add('show');
+        if (toastTimeoutId) {
+            clearTimeout(toastTimeoutId);
+        }
+        toastTimeoutId = setTimeout(() => {
+            toastEl.classList.remove('show');
+        }, 2500);
     }
 
     async function fetchMe() {
