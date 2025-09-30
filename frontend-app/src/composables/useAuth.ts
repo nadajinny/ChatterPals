@@ -8,39 +8,84 @@ type User = {
   created_at: string
 }
 
+const AUTH_MESSAGE_TYPE = 'AUTH_UPDATE'
+const WEB_SOURCE = 'chatter-web'
+const EXTENSION_SOURCE = 'chatter-extension'
+
+const initialToken =
+  (typeof window !== 'undefined' && window.localStorage.getItem('chatter_token')) || null
+
 const state = reactive({
   user: null as User | null,
-  token: (typeof window !== 'undefined' && window.localStorage.getItem('chatter_token')) || null,
+  token: initialToken,
   loading: false,
 })
 
 let initialized = false
+
+type ApplyOptions = { broadcast?: boolean }
+
+function postAuthUpdate(token: string | null, user: User | null) {
+  if (typeof window === 'undefined') return
+  window.postMessage(
+    {
+      source: WEB_SOURCE,
+      type: AUTH_MESSAGE_TYPE,
+      token,
+      user,
+    },
+    '*',
+  )
+}
+
+function applyAuth(token: string | null, user: User | null, options: ApplyOptions = {}) {
+  const broadcast = options.broadcast ?? true
+  state.user = user
+  state.token = token
+  if (typeof window !== 'undefined') {
+    if (token) {
+      window.localStorage.setItem('chatter_token', token)
+    } else {
+      window.localStorage.removeItem('chatter_token')
+    }
+  }
+  if (broadcast) {
+    postAuthUpdate(token, user)
+  }
+}
+
+function isAuthMessage(payload: unknown): payload is {
+  source: string
+  type: string
+  token?: string | null
+  user?: User | null
+} {
+  if (!payload || typeof payload !== 'object') return false
+  const record = payload as Record<string, unknown>
+  return record.source === EXTENSION_SOURCE && record.type === AUTH_MESSAGE_TYPE
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (!isAuthMessage(event.data)) return
+    console.debug('[useAuth] Received auth broadcast from extension', event.data)
+    const token = typeof event.data.token === 'string' ? event.data.token : null
+    const user = (event.data.user ?? null) as User | null
+    applyAuth(token, user, { broadcast: false })
+  })
+}
 
 async function ensureLoaded() {
   if (initialized) return
   initialized = true
   if (state.token) {
     try {
-      state.user = await fetchMe(state.token)
+      const user = await fetchMe(state.token)
+      applyAuth(state.token, user)
     } catch (error) {
       console.warn('Failed to load user', error)
-      clearAuth()
+      applyAuth(null, null)
     }
-  }
-}
-
-function setToken(token: string) {
-  state.token = token
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem('chatter_token', token)
-  }
-}
-
-function clearAuth() {
-  state.user = null
-  state.token = null
-  if (typeof window !== 'undefined') {
-    window.localStorage.removeItem('chatter_token')
   }
 }
 
@@ -55,8 +100,7 @@ export function useAuth() {
     state.loading = true
     try {
       const data = await loginRequest(username, password)
-      setToken(data.access_token)
-      state.user = data.user
+      applyAuth(data.access_token, data.user)
       return data.user
     } finally {
       state.loading = false
@@ -67,8 +111,7 @@ export function useAuth() {
     state.loading = true
     try {
       const data = await signupRequest({ username, nickname, password })
-      setToken(data.access_token)
-      state.user = data.user
+      applyAuth(data.access_token, data.user)
       return data.user
     } finally {
       state.loading = false
@@ -76,7 +119,7 @@ export function useAuth() {
   }
 
   function logout() {
-    clearAuth()
+    applyAuth(null, null)
   }
 
   return {

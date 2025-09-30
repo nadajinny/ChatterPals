@@ -11,9 +11,44 @@
   const SIDEBAR_IFRAME_ID = 'chatterpals-sidebar-iframe';
   const FAB_ID = 'chatterpals-fab';
   const SIDEBAR_URL = chrome.runtime.getURL('popup.html?context=sidebar');
+  const AUTH_MESSAGE_TYPE = 'AUTH_UPDATE';
+  const AUTH_SOURCE_WEB = 'chatter-web';
+  const AUTH_SOURCE_EXTENSION = 'chatter-extension';
 
   let sidebarIframe = null;
   let fabEl = null;
+
+  bootstrapAuthState();
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    const record = data;
+    if (record.source === AUTH_SOURCE_WEB && record.type === AUTH_MESSAGE_TYPE) {
+      const token = typeof record.token === 'string' ? record.token : null;
+      const user = record.user ?? null;
+      console.log('[content] Received auth update from web context', token)
+      if (token) {
+        chrome.storage.local.set({ authToken: token, authUser: user ?? null }, () => {
+          console.log('[content] Saved auth token from web, broadcasting to extension tabs')
+          chrome.runtime.sendMessage({
+            action: 'broadcastAuthUpdate',
+            token,
+            user,
+          });
+        });
+      } else {
+        chrome.storage.local.remove(['authToken', 'authUser'], () => {
+          console.log('[content] Cleared auth data from web, broadcasting logout')
+          chrome.runtime.sendMessage({
+            action: 'broadcastAuthUpdate',
+            token: null,
+            user: null,
+          });
+        });
+      }
+    }
+  });
 
   // ---------------------------
   // 초기화: 플로팅 버튼 가시성 반영 + 위치 복원
@@ -21,6 +56,20 @@
   chrome.storage.local.get(['floatingButtonVisible'], (res) => {
     const visible = res.floatingButtonVisible !== false; // 기본 true
     updateFABVisibility(visible);
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (!Object.prototype.hasOwnProperty.call(changes, 'authToken') &&
+        !Object.prototype.hasOwnProperty.call(changes, 'authUser')) {
+      return;
+    }
+    chrome.storage.local.get(['authToken', 'authUser'], (stored) => {
+      const token = typeof stored.authToken === 'string' ? stored.authToken : null;
+      const user = stored.authUser ?? null;
+      console.log('[content] storage change detected, syncing to page', token);
+      syncAuthToPage(token, user);
+    });
   });
 
   // ---------------------------
@@ -137,6 +186,15 @@
       // ✖ 버튼 → popup.js → background.js → (여기)
       closeSidebar();
       sendResponse?.({ status: 'sidebar closed' });
+      return true;
+    }
+
+    if (request.action === 'authUpdate') {
+      const token = typeof request.token === 'string' ? request.token : null;
+      const user = request.user ?? null;
+      console.log('[content] Received authUpdate message from background', token)
+      syncAuthToPage(token, user);
+      sendResponse?.({ ok: true });
       return true;
     }
 
@@ -306,5 +364,53 @@
         chrome.storage.local.set({ fabPosition: { left, top } });
       }
     });
+  }
+
+  function syncAuthToPage(token, user) {
+    try {
+      if (token) {
+        window.localStorage.setItem('chatter_token', token);
+        console.log('[content] Synced token into page localStorage')
+      } else {
+        window.localStorage.removeItem('chatter_token');
+        console.log('[content] Removed token from page localStorage')
+      }
+    } catch (error) {
+      console.warn('Failed to sync auth to page', error);
+    }
+    window.postMessage(
+      {
+        source: AUTH_SOURCE_EXTENSION,
+        type: AUTH_MESSAGE_TYPE,
+        token,
+        user,
+      },
+      '*',
+    );
+  }
+
+  function bootstrapAuthState() {
+    try {
+      chrome.storage.local.get(['authToken', 'authUser'], (stored) => {
+        const token = typeof stored.authToken === 'string' ? stored.authToken : null;
+        const user = stored.authUser ?? null;
+        if (token) {
+          console.log('[content] Bootstrapping existing extension token into page')
+          syncAuthToPage(token, user);
+        } else {
+          try {
+            const pageToken = window.localStorage.getItem('chatter_token');
+            if (pageToken && (!stored || stored.authToken !== pageToken)) {
+              console.log('[content] Found page token during bootstrap, copying into extension storage')
+              chrome.storage.local.set({ authToken: pageToken });
+            }
+          } catch (storageError) {
+            console.warn('Failed to read page token during bootstrap', storageError);
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to bootstrap auth state', error);
+    }
   }
 })();

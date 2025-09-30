@@ -63,6 +63,22 @@ def _connect() -> sqlite3.Connection:
     if 'user_id' not in columns:
         conn.execute('ALTER TABLE records ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE SET NULL')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id)')
+
+    conn.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS daily_goals (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            goal_date TEXT NOT NULL,
+            questions_target INTEGER NOT NULL DEFAULT 0,
+            discussions_target INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            achieved_at TEXT
+        )
+        '''
+    )
+    conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_goals_user_date ON daily_goals(user_id, goal_date)')
     conn.commit()
     return conn
 
@@ -505,6 +521,147 @@ def delete_record_for_user(record_id: str, user_id: str) -> bool:
     cur = _CONN.execute('DELETE FROM records WHERE id = ? AND user_id = ?', (record_id, user_id))
     _CONN.commit()
     return cur.rowcount > 0
+
+
+def _row_to_daily_goal(row: sqlite3.Row) -> Dict[str, object]:
+    return {
+        'id': row['id'],
+        'user_id': row['user_id'],
+        'goal_date': row['goal_date'],
+        'questions_target': int(row['questions_target'] or 0),
+        'discussions_target': int(row['discussions_target'] or 0),
+        'created_at': row['created_at'],
+        'updated_at': row['updated_at'],
+        'achieved_at': row['achieved_at'],
+    }
+
+
+def upsert_daily_goal(
+    user_id: str,
+    goal_date: str,
+    questions_target: int,
+    discussions_target: int,
+) -> Dict[str, object]:
+    now = _now_iso()
+    cur = _CONN.execute(
+        'SELECT id FROM daily_goals WHERE user_id = ? AND goal_date = ?',
+        (user_id, goal_date),
+    )
+    existing = cur.fetchone()
+    if existing:
+        _CONN.execute(
+            '''
+            UPDATE daily_goals
+            SET questions_target = ?,
+                discussions_target = ?,
+                updated_at = ?,
+                achieved_at = NULL
+            WHERE id = ?
+            ''',
+            (questions_target, discussions_target, now, existing['id']),
+        )
+    else:
+        goal_id = str(uuid.uuid4())
+        _CONN.execute(
+            '''
+            INSERT INTO daily_goals (id, user_id, goal_date, questions_target, discussions_target, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (goal_id, user_id, goal_date, questions_target, discussions_target, now, now),
+        )
+    _CONN.commit()
+    return get_daily_goal(user_id, goal_date)
+
+
+def get_daily_goal(user_id: str, goal_date: str) -> Optional[Dict[str, object]]:
+    cur = _CONN.execute(
+        'SELECT * FROM daily_goals WHERE user_id = ? AND goal_date = ?',
+        (user_id, goal_date),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return _row_to_daily_goal(row)
+
+
+def get_daily_activity_counts(user_id: str, goal_date: str) -> Dict[str, int]:
+    cur = _CONN.execute(
+        "SELECT type, payload FROM records WHERE user_id = ? AND date = ?",
+        (user_id, goal_date),
+    )
+    questions = 0
+    discussions = 0
+    for row in cur.fetchall():
+        payload = _safe_loads(row['payload'])
+        if row['type'] == 'questions':
+            items = payload.get('items') if isinstance(payload, dict) else None
+            if isinstance(items, list):
+                questions += len(items)
+            else:
+                questions += 1
+        elif row['type'] == 'discussion':
+            discussions += 1
+    return {'questions': questions, 'discussions': discussions}
+
+
+def get_daily_goal_with_progress(user_id: str, goal_date: str) -> Dict[str, object]:
+    goal = get_daily_goal(user_id, goal_date)
+    counts = get_daily_activity_counts(user_id, goal_date)
+    if not goal:
+        goal = {
+            'id': None,
+            'user_id': user_id,
+            'goal_date': goal_date,
+            'questions_target': 0,
+            'discussions_target': 0,
+            'created_at': None,
+            'updated_at': None,
+            'achieved_at': None,
+        }
+
+    has_target = (goal['questions_target'] > 0) or (goal['discussions_target'] > 0)
+    achieved = False
+    achieved_at = goal['achieved_at']
+    if has_target and counts['questions'] >= goal['questions_target'] and counts['discussions'] >= goal['discussions_target']:
+        achieved = True
+        if goal['id'] and not achieved_at:
+            now = _now_iso()
+            _CONN.execute(
+                'UPDATE daily_goals SET achieved_at = ?, updated_at = ? WHERE id = ?',
+                (now, now, goal['id']),
+            )
+            _CONN.commit()
+            achieved_at = now
+            goal['achieved_at'] = achieved_at
+    return {
+        **goal,
+        'questions_completed': counts['questions'],
+        'discussions_completed': counts['discussions'],
+        'achieved': achieved if has_target else False,
+    }
+
+
+def list_goal_achievements(user_id: str, limit: int = 7) -> List[Dict[str, object]]:
+    cur = _CONN.execute(
+        '''
+        SELECT goal_date, questions_target, discussions_target, achieved_at
+        FROM daily_goals
+        WHERE user_id = ? AND achieved_at IS NOT NULL
+        ORDER BY goal_date DESC
+        LIMIT ?
+        ''',
+        (user_id, limit),
+    )
+    rows = cur.fetchall()
+    return [
+        {
+            'goal_date': row['goal_date'],
+            'questions_target': int(row['questions_target'] or 0),
+            'discussions_target': int(row['discussions_target'] or 0),
+            'achieved_at': row['achieved_at'],
+        }
+        for row in rows
+    ]
 
 
 def _wrap_lines(text: str, width: int = 40) -> List[str]:
