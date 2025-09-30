@@ -48,6 +48,19 @@ Return ONLY valid JSON matching this schema:
 }}
 """
 
+WORDS_OF_DAY = [
+    {"word": "assemble", "meaning": "모으다, 조립하다"},
+    {"word": "meticulous", "meaning": "세심한, 꼼꼼한"},
+    {"word": "tentative", "meaning": "임시적인, 잠정적인"},
+    {"word": "discern", "meaning": "분별하다, 알아차리다"},
+    {"word": "endeavor", "meaning": "노력, 시도"},
+    {"word": "alleviate", "meaning": "완화하다, 경감하다"},
+    {"word": "pragmatic", "meaning": "실용적인, 현실적인"},
+    {"word": "inevitable", "meaning": "불가피한"},
+    {"word": "diligent", "meaning": "성실한, 부지런한"},
+    {"word": "substantiate", "meaning": "입증하다, 구체화하다"},
+]
+
 
 @dataclass
 class LevelQuestion:
@@ -250,7 +263,7 @@ def _parse_generated_questions(raw: str) -> List[LevelQuestion]:
 
 
 async def generate_dynamic_questions(
-    *, count: int = 12, skills: Optional[List[str]] = None
+    *, count: int = 26, skills: Optional[List[str]] = None
 ) -> List[LevelQuestion]:
     skills = skills or ["grammar", "vocabulary", "reading"]
     skills_clause = ", ".join(skills)
@@ -376,3 +389,9 @@ def build_feedback(level: str, percentage: float, focus_skill: Optional[str]) ->
 
 def questions_to_public_payload(questions: Iterable[LevelQuestion]) -> List[Dict[str, object]]:
     return [q.as_public() for q in questions]
+
+
+def get_daily_words(count: int = 3) -> List[Dict[str, str]]:
+    pool = WORDS_OF_DAY[:]
+    random.shuffle(pool)
+    return pool[: min(count, len(pool))]

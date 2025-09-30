@@ -84,3 +84,18 @@ export async function submitLevelTest(
   }
   return response.json()
 }
+
+export interface WordTip {
+  word: string
+  meaning: string
+}
+
+export async function fetchWordTips(count = 3): Promise<WordTip[]> {
+  const response = await fetch(`${TEXT_API_BASE}/level-test/words?count=${count}`)
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}))
+    throw new Error(detail?.detail ?? '단어 정보를 불러오지 못했습니다.')
+  }
+  const data = await response.json()
+  return data.words ?? []
+}

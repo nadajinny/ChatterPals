@@ -3,7 +3,7 @@ import Home from '../views/Home.vue'
 import LevelTest from '../views/LevelTest.vue'
 import AITutor from '../views/AITutor.vue'
 import StudyLog from '../views/StudyLog.vue'
-import Settings from '../views/Settings.vue'
+import Ranking from '../views/Ranking.vue'
 import MyPage from '../views/MyPage.vue'
 import RecordDetail from '../views/RecordDetail.vue'
 const routes = [
@@ -28,10 +28,10 @@ const routes = [
     component: StudyLog
   }, 
   {
-    path: '/settings', 
-    name: 'Settings', 
-    component: Settings
-  }, 
+    path: '/ranking',
+    name: 'Ranking',
+    component: Ranking,
+  },
   {
     path: '/mypage', 
     name: 'MyPage', 
