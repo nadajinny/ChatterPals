@@ -12,6 +12,120 @@
 
     <section
       v-if="isAuthenticated"
+      class="daily-goal"
+      aria-live="polite"
+    >
+      <header class="goal-header">
+        <h3>일일 학습 목표</h3>
+        <button
+          type="button"
+          class="goal-refresh"
+          @click="loadDailyGoal"
+          :disabled="goalLoading || goalSaving"
+        >
+          {{ goalLoading ? '불러오는 중...' : '새로고침' }}
+        </button>
+      </header>
+
+      <p v-if="goalError" class="goal-error">{{ goalError }}</p>
+
+      <div class="goal-body">
+        <form class="goal-form" @submit.prevent="saveGoal">
+          <label class="goal-field">
+            <span>질문·답변 목표</span>
+            <div class="field-control">
+              <input
+                type="number"
+                min="0"
+                max="999"
+                v-model.number="goalForm.questions_target"
+                :disabled="goalSaving"
+                aria-describedby="goal-question-help"
+              />
+              <span class="unit">개</span>
+            </div>
+            <small id="goal-question-help">오늘 {{ dailyGoal?.questions_completed ?? 0 }}개 진행</small>
+          </label>
+          <label class="goal-field">
+            <span>토론 목표</span>
+            <div class="field-control">
+              <input
+                type="number"
+                min="0"
+                max="999"
+                v-model.number="goalForm.discussions_target"
+                :disabled="goalSaving"
+                aria-describedby="goal-discussion-help"
+              />
+              <span class="unit">회</span>
+            </div>
+            <small id="goal-discussion-help">오늘 {{ dailyGoal?.discussions_completed ?? 0 }}회 진행</small>
+          </label>
+          <button type="submit" class="goal-save" :disabled="goalSaving">
+            {{ goalSaving ? '저장 중...' : '목표 저장' }}
+          </button>
+        </form>
+
+        <div class="goal-status" v-if="dailyGoal">
+          <div class="progress-group">
+            <div class="progress-item">
+              <p class="progress-label">질문·답변</p>
+              <div
+                class="progress-bar"
+                role="progressbar"
+                :aria-valuenow="goalProgress.questionsPercent"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span class="progress-fill" :style="{ width: goalProgress.questionsPercent + '%' }"></span>
+              </div>
+              <p class="progress-value">{{ dailyGoal.questions_completed }} / {{ dailyGoal.questions_target }}</p>
+            </div>
+            <div class="progress-item">
+              <p class="progress-label">토론</p>
+              <div
+                class="progress-bar"
+                role="progressbar"
+                :aria-valuenow="goalProgress.discussionsPercent"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span class="progress-fill secondary" :style="{ width: goalProgress.discussionsPercent + '%' }"></span>
+              </div>
+              <p class="progress-value">{{ dailyGoal.discussions_completed }} / {{ dailyGoal.discussions_target }}</p>
+            </div>
+          </div>
+
+          <div class="goal-reward" :class="{ unlocked: dailyGoal.achieved }">
+            <div class="goal-stamp" aria-hidden="true">
+              <span v-if="dailyGoal.achieved">🏆</span>
+              <span v-else>📘</span>
+            </div>
+            <div class="reward-text">
+              <strong v-if="dailyGoal.achieved">오늘의 목표를 달성했어요!</strong>
+              <span v-if="dailyGoal.achieved && dailyGoal.achieved_at"> {{ formatDate(dailyGoal.achieved_at) }} 도장 지급</span>
+              <span v-else>목표를 채우면 오늘의 도장이 발급돼요.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="goal-history-block">
+        <h4>최근 도장 기록</h4>
+        <p v-if="goalHistoryError" class="goal-error">{{ goalHistoryError }}</p>
+        <p v-else-if="goalHistoryLoading" class="goal-note">불러오는 중...</p>
+        <p v-else-if="!goalHistory.length" class="goal-note">아직 도장이 없어요. 오늘 목표부터 달성해 볼까요?</p>
+        <ul v-else class="goal-history">
+          <li v-for="item in goalHistory" :key="item.goal_date">
+            <span class="history-date">{{ formatDate(item.achieved_at) }}</span>
+            <span class="history-target">Q {{ item.questions_target }} · 토론 {{ item.discussions_target }}</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section
+      v-if="isAuthenticated"
       class="ranking-summary"
       aria-live="polite"
     >
@@ -114,10 +228,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { deleteMyRecord, fetchMyRecords, fetchMyRankings, type MyRecord, type MyRankingsResponse } from '@/services/auth'
+import { fetchDailyGoal, fetchDailyGoalHistory, saveDailyGoal, type DailyGoal, type DailyGoalHistoryItem } from '@/services/dailyGoals'
 
 const router = useRouter()
 const { user, token, isAuthenticated, ensureLoaded } = useAuth()
@@ -128,6 +243,17 @@ const activeFilter = ref<'all' | 'questions' | 'discussion' | 'level_test'>('all
 const rankingLoading = ref(false)
 const rankingError = ref('')
 const myRankings = ref<MyRankingsResponse | null>(null)
+const dailyGoal = ref<DailyGoal | null>(null)
+const goalForm = reactive({
+  questions_target: 0,
+  discussions_target: 0,
+})
+const goalLoading = ref(false)
+const goalSaving = ref(false)
+const goalError = ref('')
+const goalHistoryLoading = ref(false)
+const goalHistoryError = ref('')
+const goalHistory = ref<DailyGoalHistoryItem[]>([])
 
 const filteredRecords = computed(() => {
   if (activeFilter.value === 'all') return records.value
@@ -160,6 +286,69 @@ async function loadRankingSummary() {
     myRankings.value = null
   } finally {
     rankingLoading.value = false
+  }
+}
+
+function sanitizeTarget(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(999, Math.round(value)))
+}
+
+function syncGoalForm(goal: DailyGoal | null) {
+  goalForm.questions_target = sanitizeTarget(goal?.questions_target ?? 0)
+  goalForm.discussions_target = sanitizeTarget(goal?.discussions_target ?? 0)
+}
+
+async function loadDailyGoal() {
+  if (!token.value) return
+  goalLoading.value = true
+  goalError.value = ''
+  try {
+    const data = await fetchDailyGoal(token.value)
+    dailyGoal.value = data
+    syncGoalForm(data)
+  } catch (err) {
+    console.error(err)
+    goalError.value = err instanceof Error ? err.message : '일일 목표를 불러오지 못했습니다.'
+  } finally {
+    goalLoading.value = false
+  }
+}
+
+async function loadGoalHistory() {
+  if (!token.value) return
+  goalHistoryLoading.value = true
+  goalHistoryError.value = ''
+  try {
+    goalHistory.value = await fetchDailyGoalHistory(token.value, 10)
+  } catch (err) {
+    console.error(err)
+    goalHistoryError.value = err instanceof Error ? err.message : '도장 기록을 불러오지 못했습니다.'
+  } finally {
+    goalHistoryLoading.value = false
+  }
+}
+
+async function saveGoal() {
+  if (!token.value) return
+  goalSaving.value = true
+  goalError.value = ''
+  const payload = {
+    questions_target: sanitizeTarget(goalForm.questions_target),
+    discussions_target: sanitizeTarget(goalForm.discussions_target),
+  }
+  goalForm.questions_target = payload.questions_target
+  goalForm.discussions_target = payload.discussions_target
+  try {
+    const updated = await saveDailyGoal(token.value, payload)
+    dailyGoal.value = updated
+    syncGoalForm(updated)
+    await loadGoalHistory()
+  } catch (err) {
+    console.error(err)
+    goalError.value = err instanceof Error ? err.message : '일일 목표를 저장하지 못했습니다.'
+  } finally {
+    goalSaving.value = false
   }
 }
 
@@ -214,16 +403,25 @@ onMounted(async () => {
   if (isAuthenticated.value) {
     loadRecords()
     loadRankingSummary()
+    loadDailyGoal()
+    loadGoalHistory()
   }
+  window.addEventListener('chatter-records-updated', handleRecordsUpdated)
 })
 
 watch(isAuthenticated, (val) => {
   if (val) {
     loadRecords()
     loadRankingSummary()
+    loadDailyGoal()
+    loadGoalHistory()
   } else {
     records.value = []
     myRankings.value = null
+    dailyGoal.value = null
+    goalHistory.value = []
+    goalError.value = ''
+    goalHistoryError.value = ''
   }
 })
 
@@ -240,6 +438,28 @@ const questionRankText = computed(() => {
 const discussionRankText = computed(() => {
   const rank = myRankings.value?.learning?.discussions?.rank
   return rank ? `#${rank}` : '기록 없음'
+})
+
+const goalProgress = computed(() => {
+  if (!dailyGoal.value) {
+    return { questionsPercent: 0, discussionsPercent: 0 }
+  }
+  const { questions_target, questions_completed, discussions_target, discussions_completed } = dailyGoal.value
+  const questionsPercent = questions_target > 0 ? Math.min(100, Math.round((questions_completed / questions_target) * 100)) : 0
+  const discussionsPercent = discussions_target > 0 ? Math.min(100, Math.round((discussions_completed / discussions_target) * 100)) : 0
+  return { questionsPercent, discussionsPercent }
+})
+
+function handleRecordsUpdated() {
+  if (!isAuthenticated.value) return
+  loadRecords()
+  loadRankingSummary()
+  loadDailyGoal()
+  loadGoalHistory()
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('chatter-records-updated', handleRecordsUpdated)
 })
 </script>
 
@@ -274,6 +494,258 @@ const discussionRankText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.daily-goal {
+  max-width: 960px;
+  margin: 0 auto 2.5rem;
+  padding: clamp(18px, 4vw, 28px);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.goal-header h3 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.goal-refresh {
+  border: 1px solid #2563eb;
+  color: #2563eb;
+  background: transparent;
+  padding: 0.35rem 0.9rem;
+  border-radius: 9999px;
+  cursor: pointer;
+}
+
+.goal-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.goal-error {
+  color: #dc2626;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.goal-note {
+  color: #4b5563;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.goal-body {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+}
+
+.goal-form {
+  display: grid;
+  gap: 1rem;
+  background: #f9fafb;
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+
+.goal-field {
+  display: grid;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.field-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.35rem 0.75rem;
+}
+
+.field-control input[type='number'] {
+  flex: 1;
+  border: none;
+  font-size: 1rem;
+  padding: 0.25rem 0;
+  background: transparent;
+  outline: none;
+}
+
+.field-control .unit {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.goal-field small {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.goal-save {
+  border: none;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+.goal-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.goal-status {
+  display: grid;
+  gap: 1.2rem;
+  background: #f9fafb;
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+
+.progress-group {
+  display: grid;
+  gap: 1rem;
+}
+
+.progress-item {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.progress-label {
+  margin: 0;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.8), rgba(14, 165, 233, 0.8));
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.secondary {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(59, 130, 246, 0.8));
+}
+
+.progress-value {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.goal-reward {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 2px dashed rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.06);
+  transition: transform 0.25s ease;
+}
+
+.goal-reward.unlocked {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.08);
+  transform: translateY(-2px);
+}
+
+.goal-stamp {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
+}
+
+.goal-reward.unlocked .goal-stamp {
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);
+}
+
+.reward-text {
+  display: grid;
+  gap: 0.3rem;
+  color: #1f2937;
+}
+
+.reward-text strong {
+  font-size: 1.05rem;
+  color: #065f46;
+}
+
+.goal-history-block {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.goal-history-block h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.goal-history {
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0;
+  margin: 0;
+}
+
+.goal-history li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  color: #1f2937;
+}
+
+.history-date {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.history-target {
+  color: #4b5563;
 }
 
 .ranking-header {
