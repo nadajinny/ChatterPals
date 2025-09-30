@@ -2,6 +2,7 @@ import os
 import traceback
 import json #
 import ast
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
@@ -48,6 +49,9 @@ from .records import (
     get_user_learning_ranks,
     save_level_test_record,
     update_user_nickname,
+    get_daily_goal_with_progress,
+    upsert_daily_goal,
+    list_goal_achievements,
 )
 
 # --- 환경 변수 및 API 클라이언트 설정 ---
@@ -66,6 +70,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _resolve_goal_date(value: Optional[str]) -> str:
+    if value:
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="잘못된 날짜 형식입니다. YYYY-MM-DD 형태로 입력해 주세요.") from exc
+        return parsed.isoformat()
+    return datetime.now(timezone.utc).date().isoformat()
 
 # --- Pydantic 데이터 모델 정의 ---
 class QuestionsRequest(BaseModel):
@@ -156,6 +170,23 @@ class SignupRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     nickname: str = Field(..., min_length=1, max_length=64)
 
+
+class DailyGoalRequest(BaseModel):
+    goal_date: Optional[str] = Field(
+        None,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="목표가 적용될 날짜 (YYYY-MM-DD). 비우면 오늘 날짜로 설정",
+    )
+    questions_target: int = Field(0, ge=0, le=999, description="하루 질문·답변 목표 수")
+    discussions_target: int = Field(0, ge=0, le=999, description="하루 토론 목표 수")
+
+
+class DailyGoalHistoryItem(BaseModel):
+    goal_date: str
+    questions_target: int
+    discussions_target: int
+    achieved_at: str
+
 # --- API 엔드포인트 ---
 @app.get("/")
 def get_status():
@@ -236,6 +267,36 @@ async def delete_my_record(record_id: str, current_user: dict = Depends(get_curr
     if not deleted:
         raise HTTPException(status_code=404, detail="Record not found")
     return Response(status_code=204)
+
+
+@app.get("/me/daily-goal", tags=["Daily Goal"])
+async def get_my_daily_goal(
+    date: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    current_user: dict = Depends(get_current_user),
+):
+    goal_date = _resolve_goal_date(date)
+    return get_daily_goal_with_progress(current_user["id"], goal_date)
+
+
+@app.put("/me/daily-goal", tags=["Daily Goal"])
+async def put_my_daily_goal(req: DailyGoalRequest, current_user: dict = Depends(get_current_user)):
+    goal_date = _resolve_goal_date(req.goal_date)
+    upsert_daily_goal(
+        current_user["id"],
+        goal_date,
+        req.questions_target,
+        req.discussions_target,
+    )
+    return get_daily_goal_with_progress(current_user["id"], goal_date)
+
+
+@app.get("/me/daily-goal/history", tags=["Daily Goal"])
+async def get_my_daily_goal_history(
+    limit: int = Query(7, ge=1, le=30),
+    current_user: dict = Depends(get_current_user),
+):
+    history = list_goal_achievements(current_user["id"], limit=limit)
+    return {"history": history}
 
 @app.post("/questions")
 def post_questions(req: QuestionsRequest):

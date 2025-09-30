@@ -138,6 +138,7 @@ function initializeSidebar() {
             try {
                 const me = await fetchMe();
                 authUser = me;
+                chrome.storage.local.set({ authUser });
                 updateAccountUI();
             } catch (error) {
                 console.warn('Stored token invalid', error);
@@ -146,6 +147,39 @@ function initializeSidebar() {
             }
         } else {
             updateAccountUI();
+        }
+    });
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== 'local') return;
+        let shouldFetchUser = false;
+        console.log('[popup] storage changed', changes);
+
+        if (Object.prototype.hasOwnProperty.call(changes, 'authToken')) {
+            authToken = changes.authToken.newValue || null;
+            if (!authToken) {
+                authUser = null;
+                updateAccountUI();
+            } else if (!Object.prototype.hasOwnProperty.call(changes, 'authUser')) {
+                shouldFetchUser = true;
+            }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(changes, 'authUser')) {
+            authUser = changes.authUser.newValue || null;
+            updateAccountUI();
+        } else if (shouldFetchUser && authToken) {
+            fetchMe()
+                .then((me) => {
+                    authUser = me;
+                    chrome.storage.local.set({ authUser: me });
+                    updateAccountUI();
+                })
+                .catch((error) => {
+                    console.warn('Failed to refresh auth user', error);
+                    clearAuth(false);
+                    updateAccountUI();
+                });
         }
     });
 
@@ -638,7 +672,13 @@ function initializeSidebar() {
             const data = await response.json();
             authToken = data.access_token;
             authUser = data.user;
-            chrome.storage.local.set({ authToken, authUser });
+            chrome.storage.local.set({ authToken, authUser }, () => {
+                chrome.runtime.sendMessage({
+                    action: 'broadcastAuthUpdate',
+                    token: authToken,
+                    user: authUser,
+                });
+            });
             loginStatus.textContent = '로그인 성공!';
             loginForm.reset();
             updateAccountUI();
@@ -655,10 +695,18 @@ function initializeSidebar() {
         updateAccountUI();
     }
 
-    function clearAuth() {
+    function clearAuth(shouldBroadcast = true) {
         authToken = null;
         authUser = null;
-        chrome.storage.local.remove(['authToken', 'authUser']);
+        chrome.storage.local.remove(['authToken', 'authUser'], () => {
+            if (shouldBroadcast) {
+                chrome.runtime.sendMessage({
+                    action: 'broadcastAuthUpdate',
+                    token: null,
+                    user: null,
+                });
+            }
+        });
     }
 
     function updateAccountUI() {

@@ -62,6 +62,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.runtime.sendMessage(request);
         closeOffscreenDocument();
 
+    } else if (request.action === 'broadcastAuthUpdate') {
+        console.log('[background] Broadcasting auth update to tabs', request.token ? 'login' : 'logout');
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach((tab) => {
+                if (!tab.id || (tab.url && tab.url.startsWith('chrome://'))) return;
+                console.log('[background] Forwarding auth update to tab', tab.id, tab.url);
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'authUpdate',
+                    token: request.token ?? null,
+                    user: request.user ?? null,
+                });
+            });
+        });
+        sendResponse?.({ ok: true });
+        return true;
+
     } else if (request.action === 'permissionResult') {
         chrome.runtime.sendMessage(request);
     }
