@@ -280,6 +280,184 @@ def save_discussion_record(
     )
 
 
+def _safe_loads(value: Optional[str]) -> Dict:
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _build_level_test_entries() -> List[Dict[str, object]]:
+    query = (
+        'SELECT r.user_id, r.evaluation, r.updated_at, r.created_at, u.nickname '
+        'FROM records r '
+        'JOIN users u ON u.id = r.user_id '
+        "WHERE r.type = 'level_test' AND r.user_id IS NOT NULL AND r.evaluation IS NOT NULL"
+    )
+    stats: Dict[str, Dict[str, object]] = {}
+    cur = _CONN.execute(query)
+    for row in cur.fetchall():
+        user_id = row['user_id']
+        evaluation = _safe_loads(row['evaluation'])
+        percentage = evaluation.get('percentage')
+        if percentage is None:
+            continue
+        try:
+            score = float(percentage)
+        except (TypeError, ValueError):
+            continue
+        updated_at = row['updated_at'] or row['created_at'] or ''
+        entry = stats.setdefault(user_id, {
+            'user_id': user_id,
+            'nickname': row['nickname'] or '익명',
+            'best_score': score,
+            'attempts': 0,
+            'last_attempt': updated_at,
+        })
+        entry['attempts'] += 1
+        if score > entry['best_score']:
+            entry['best_score'] = score
+        if updated_at and updated_at > entry['last_attempt']:
+            entry['last_attempt'] = updated_at
+    ordered = sorted(
+        stats.values(),
+        key=lambda item: (item['best_score'], item['last_attempt']),
+        reverse=True,
+    )
+    results: List[Dict[str, object]] = []
+    for idx, item in enumerate(ordered, start=1):
+        results.append({
+            'rank': idx,
+            'user_id': item['user_id'],
+            'nickname': item['nickname'],
+            'best_score': round(item['best_score'], 1),
+            'attempts': item['attempts'],
+            'last_attempt': item['last_attempt'],
+        })
+    return results
+
+
+def get_level_test_rankings(limit: int = 20) -> List[Dict]:
+    entries = _build_level_test_entries()
+    results: List[Dict[str, object]] = []
+    for item in entries[:limit]:
+        results.append({
+            'rank': item['rank'],
+            'nickname': item['nickname'],
+            'best_score': item['best_score'],
+            'attempts': item['attempts'],
+            'last_attempt': item['last_attempt'],
+        })
+    return results
+
+
+def get_user_level_test_rank(user_id: str) -> Optional[Dict[str, object]]:
+    if not user_id:
+        return None
+    for entry in _build_level_test_entries():
+        if entry['user_id'] == user_id:
+            return {
+                'rank': entry['rank'],
+                'best_score': entry['best_score'],
+                'attempts': entry['attempts'],
+                'last_attempt': entry['last_attempt'],
+            }
+    return None
+
+
+def _build_learning_entries() -> Dict[str, List[Dict[str, object]]]:
+    query = (
+        'SELECT r.user_id, r.type, r.payload, r.updated_at, r.created_at, u.nickname '
+        'FROM records r '
+        'JOIN users u ON u.id = r.user_id '
+        "WHERE r.user_id IS NOT NULL AND r.type IN ('questions', 'discussion')"
+    )
+    question_counts: Dict[str, Dict[str, object]] = {}
+    discussion_counts: Dict[str, Dict[str, object]] = {}
+    cur = _CONN.execute(query)
+    for row in cur.fetchall():
+        user_id = row['user_id']
+        payload = _safe_loads(row['payload'])
+        if row['type'] == 'questions':
+            items = payload.get('items')
+            count = len(items) if isinstance(items, list) else 1
+            stats = question_counts.setdefault(user_id, {
+                'nickname': row['nickname'] or '익명',
+                'count': 0,
+                'last_activity': row['updated_at'] or row['created_at'] or '',
+            })
+            stats['count'] += count
+            last_ts = row['updated_at'] or row['created_at'] or ''
+            if last_ts and last_ts > stats['last_activity']:
+                stats['last_activity'] = last_ts
+        elif row['type'] == 'discussion':
+            stats = discussion_counts.setdefault(user_id, {
+                'nickname': row['nickname'] or '익명',
+                'count': 0,
+                'last_activity': row['updated_at'] or row['created_at'] or '',
+            })
+            stats['count'] += 1
+            last_ts = row['updated_at'] or row['created_at'] or ''
+            if last_ts and last_ts > stats['last_activity']:
+                stats['last_activity'] = last_ts
+
+    def _to_ranked_list(source: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
+        ordered = sorted(
+            source.items(),
+            key=lambda item: (item[1]['count'], item[1]['last_activity']),
+            reverse=True,
+        )
+        results: List[Dict[str, object]] = []
+        for idx, (uid, item) in enumerate(ordered, start=1):
+            results.append({
+                'rank': idx,
+                'user_id': uid,
+                'nickname': item['nickname'],
+                'count': item['count'],
+                'last_activity': item['last_activity'],
+            })
+        return results
+
+    return {
+        'questions': _to_ranked_list(question_counts),
+        'discussions': _to_ranked_list(discussion_counts),
+    }
+
+
+def get_learning_volume_rankings(limit: int = 20) -> Dict[str, List[Dict]]:
+    entries = _build_learning_entries()
+    return {
+        'questions': entries['questions'][:limit],
+        'discussions': entries['discussions'][:limit],
+    }
+
+
+def get_user_learning_ranks(user_id: str) -> Dict[str, Optional[Dict[str, object]]]:
+    if not user_id:
+        return {'questions': None, 'discussions': None}
+    entries = _build_learning_entries()
+    question_entry = next((item for item in entries['questions'] if item['user_id'] == user_id), None)
+    discussion_entry = next((item for item in entries['discussions'] if item['user_id'] == user_id), None)
+    def _strip(entry):
+        if not entry:
+            return None
+        return {
+            'rank': entry['rank'],
+            'count': entry['count'],
+            'last_activity': entry['last_activity'],
+        }
+    return {
+        'questions': _strip(question_entry),
+        'discussions': _strip(discussion_entry),
+    }
+
+
 def list_records(date: Optional[str] = None, *, user_id: Optional[str] = None) -> List[Dict]:
     base_query = 'SELECT id, type, created_at, updated_at, date, meta, user_id FROM records'
     clauses = []

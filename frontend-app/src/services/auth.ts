@@ -118,3 +118,34 @@ export async function evaluateDiscussionRecord(token: string, id: string) {
   }
   return response.json()
 }
+
+export interface MyRankingsResponse {
+  level_test: {
+    rank: number
+    best_score: number
+    attempts: number
+    last_attempt?: string | null
+  } | null
+  learning: {
+    questions: { rank: number; count: number; last_activity?: string | null } | null
+    discussions: { rank: number; count: number; last_activity?: string | null } | null
+  }
+}
+
+export async function fetchMyRankings(token: string): Promise<MyRankingsResponse> {
+  const response = await fetch(`${TEXT_API_BASE}/me/rankings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}))
+    throw new Error(detail?.detail ?? '내 랭킹 정보를 불러오지 못했습니다.')
+  }
+  const data = await response.json()
+  return {
+    level_test: data.level_test ?? null,
+    learning: {
+      questions: data.learning?.questions ?? null,
+      discussions: data.learning?.discussions ?? null,
+    },
+  }
+}

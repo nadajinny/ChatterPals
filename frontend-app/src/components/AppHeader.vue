@@ -27,8 +27,7 @@
         <RouterLink to="/level-test" @click="closeNav">Level Test</RouterLink>
         <RouterLink to="/aitutor" @click="closeNav">AI 튜터</RouterLink>
         <RouterLink to="/studylog" @click="closeNav">Study Log</RouterLink>
-        <RouterLink to="/settings" @click="closeNav">Settings</RouterLink>
-        <RouterLink to="/mypage" @click="closeNav">My Page</RouterLink>
+        <RouterLink to="/ranking" @click="closeNav">Ranking</RouterLink>
       </nav>
 
       <div class="auth-actions" aria-live="polite" :class="{ open: navOpen }">

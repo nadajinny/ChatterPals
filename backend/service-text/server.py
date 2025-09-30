@@ -19,6 +19,7 @@ from .level_test import (
     create_session as create_level_test_session,
     evaluate_responses as evaluate_level_test_responses,
     generate_dynamic_questions,
+    get_daily_words,
     get_session_questions as get_level_test_session,
     questions_to_public_payload,
     select_questions as select_level_test_questions,
@@ -41,6 +42,10 @@ from .records import (
     record_to_pdf,
     records_to_pdf,
     save_questions_record,
+    get_level_test_rankings,
+    get_learning_volume_rankings,
+    get_user_level_test_rank,
+    get_user_learning_ranks,
     save_level_test_record,
     update_user_nickname,
 )
@@ -242,7 +247,7 @@ def post_questions(req: QuestionsRequest):
 
 @app.get("/level-test/start", tags=["Level Test"])
 async def get_level_test_start(
-    count: int = Query(12, ge=6, le=20, description="Number of questions to deliver"),
+    count: int = Query(25, ge=6, le=50, description="Number of questions to deliver"),
     mode: str = Query(
         "dynamic",
         pattern="^(dynamic|static)$",
@@ -309,6 +314,11 @@ def post_level_test_submit(
         "details": details,
         "record_id": record.get("id") if record else None,
     }
+
+
+@app.get("/level-test/words", tags=["Level Test"])
+def get_level_test_words(count: int = Query(3, ge=1, le=10)):
+    return {"words": get_daily_words(count=count)}
 
 # ✅ [신규] 답변 평가 API
 EVALUATION_MODEL = "gemini-2.0-flash-lite-preview"
@@ -548,6 +558,24 @@ def get_record_details(record_id: str):
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     return record
+
+
+@app.get("/rankings", tags=["Rankings"])
+def get_rankings(
+    limit: int = Query(10, ge=1, le=100, description="Number of entries to return"),
+):
+    return {
+        "level_test": get_level_test_rankings(limit=limit),
+        "learning": get_learning_volume_rankings(limit=limit),
+    }
+
+
+@app.get("/me/rankings", tags=["Rankings"])
+async def get_my_rankings(current_user: dict = Depends(get_current_user)):
+    return {
+        "level_test": get_user_level_test_rank(current_user["id"]),
+        "learning": get_user_learning_ranks(current_user["id"]),
+    }
 
 @app.get("/records/{record_id}.pdf")
 def get_record_as_pdf(record_id: str):

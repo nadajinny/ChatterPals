@@ -1,10 +1,25 @@
 <template>
   <main class="level-test" aria-live="polite">
+    <div v-if="tipVisible && stage === 'intro'" class="tip-overlay" role="dialog" aria-modal="true">
+      <div class="tip-card">
+        <h3>오늘의 단어 암기</h3>
+        <h3>문제를 생성중입니다.</h3>
+        <h3>생성되는동안 오늘의 단어를 외워보세요!</h3>
+        <ul>
+          <li v-for="item in wordTips" :key="item.word">
+            <strong>{{ item.word }}</strong>
+            <span>— {{ item.meaning }}</span>
+          </li>
+          <li v-if="!wordTips.length" class="placeholder">단어를 불러오는 중...</li>
+        </ul>
+      </div>
+    </div>
+
     <section v-if="stage === 'intro'" class="intro" aria-labelledby="level-test-title">
       <div class="intro-inner">
         <h1 id="level-test-title">영어 레벨 테스트</h1>
         <p class="lead">
-          12개의 객관식 문항으로 문법 · 어휘 · 읽기 능력을 확인하고, CEFR 기준 레벨을 안내해 드립니다.
+          25개의 객관식 문항으로 문법 · 어휘 · 읽기 능력을 확인하고, CEFR 기준 레벨을 안내해 드립니다.
           질문은 매번 무작위로 섞이며, 로그인 상태라면 결과가 자동 저장됩니다.
         </p>
         <ul class="steps">
@@ -143,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import {
@@ -152,6 +167,8 @@ import {
   type LevelTestQuestion,
   type LevelTestEvaluation,
   type LevelTestResponseItem,
+  fetchWordTips,
+  type WordTip,
 } from '@/services/levelTest'
 
 const router = useRouter()
@@ -169,6 +186,9 @@ const details = ref<LevelTestSubmitResponse['details']>([])
 const recordId = ref<string | null>(null)
 const sessionId = ref<string>('')
 const testMode = ref<'dynamic' | 'static'>('dynamic')
+const tipVisible = ref(false)
+const wordTips = ref<WordTip[]>([])
+const prefetchedWords = ref<WordTip[]>([])
 
 type LevelTestSubmitResponse = Awaited<ReturnType<typeof submitLevelTest>>
 
@@ -180,9 +200,16 @@ async function beginTest() {
   stage.value = 'intro'
   loading.value = true
   sessionId.value = ''
+  tipVisible.value = true
+  wordTips.value = prefetchedWords.value.slice()
   try {
     await ensureLoaded()
-    const data = await startLevelTest(12, 'dynamic')
+    const [words, data] = await Promise.all([
+      fetchWordTips(4).catch(() => prefetchedWords.value.slice()),
+      startLevelTest(25, 'dynamic'),
+    ])
+    wordTips.value = (words as WordTip[]) ?? prefetchedWords.value.slice()
+    prefetchedWords.value = wordTips.value.slice()
     sessionId.value = data.session_id
     testMode.value = data.mode
     questions.value = data.questions
@@ -194,6 +221,7 @@ async function beginTest() {
   } catch (err) {
     console.error(err)
     error.value = err instanceof Error ? err.message : '문항을 불러오지 못했습니다.'
+    tipVisible.value = false
   } finally {
     loading.value = false
   }
@@ -203,6 +231,7 @@ function cancelTest() {
   stage.value = 'intro'
   error.value = ''
   sessionId.value = ''
+  tipVisible.value = false
 }
 
 const answeredCount = computed(() =>
@@ -231,8 +260,17 @@ async function submitTest() {
     error.value = err instanceof Error ? err.message : '채점 중 오류가 발생했습니다.'
   } finally {
     submitting.value = false
+    tipVisible.value = false
   }
 }
+
+function closeTip() {
+  tipVisible.value = false
+}
+
+onMounted(async () => {
+  prefetchedWords.value = await fetchWordTips(4).catch(() => [])
+})
 
 const skillEntries = computed(() => {
   if (!evaluation.value) return []
@@ -348,6 +386,16 @@ function goStudyLog() {
   font-weight: 600;
 }
 
+.tip {
+  background: rgba(15, 23, 42, 0.08);
+  border-left: 4px solid #4f46e5;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  white-space: pre-line;
+  color: #1f2937;
+}
+
 .mode-hint {
   background: rgba(14, 165, 233, 0.1);
   border: 1px solid rgba(14, 165, 233, 0.3);
@@ -355,6 +403,80 @@ function goStudyLog() {
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
   color: #0f172a;
+}
+
+.tip-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.tip-card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1.5rem;
+  width: min(90vw, 360px);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  display: grid;
+  gap: 1rem;
+  white-space: pre-line;
+  color: #1f2937;
+}
+
+.tip-card h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.tip-card p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.tip-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.tip-card li {
+  display: flex;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.tip-card li span {
+  font-weight: 400;
+  color: #475569;
+}
+
+.tip-card li.placeholder {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.tip-close {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.6rem 1.2rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #4f46e5, #0ea5e9);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tip-close:hover {
+  opacity: 0.9;
 }
 
 .question-list {
