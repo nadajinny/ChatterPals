@@ -36,8 +36,8 @@ app.add_middleware(
 )
 
 # --- 모델 및 프롬프트 설정 ---
-MODEL_STT = "gemini-1.5-flash"
-MODEL_CHAT = "gemini-1.5-flash"
+MODEL_STT = "gemini-2.0-flash-lite-preview"
+MODEL_CHAT = "gemini-2.0-flash-lite-preview"
 SYSTEM_PROMPT = "너는 친절하고 상냥한 AI 외국어 교육 어시스턴트야. 발음,회화, 문법등을 대화하면서 도와주는 선생님이지."
 
 # --- 헬퍼 함수 ---
